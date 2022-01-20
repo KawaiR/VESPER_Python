@@ -1,4 +1,4 @@
-# VESPER_Python
+# VESPER_Python (*README still in progress*)
 
 ## Requirements:
 * matplotlib
