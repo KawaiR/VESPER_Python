@@ -13,6 +13,7 @@ Original VESPER: https://github.com/kiharalab/VESPER
 * pyFFTW
 * scipy
 
+## Software Compatibility:
 To ensure all versions are compatible, run:
 ```
 pip3 install -r requirement.txt --user
