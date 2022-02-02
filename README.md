@@ -73,13 +73,13 @@ Usage: main.py orig [-h] -a A -b B [-t T] [-T T] [-g G] [-s S] [-A A] [-N N] [-S
 ```
 (2) Mode 2: Probability maps generated for each secondary structure in both maps used for alignment must be generated using Emap2sec+ first and then converted into .npy format using the interpolation script before running this mode. (With Secondary structure matching.)
 ```
-Usage: main.py prob [-h] -a A -p1 P1 -b B -p2 P2 [-t T] [-T T] [-g G] [-s S] [-A A] [-N N] [-S S] [-M M] [-E E]
+Usage: main.py prob [-h] -a A -npa NPA -b B -npb NPB [-t T] [-T T] [-g G] [-s S] [-A A] [-N N] [-S S] [-M M] [-E E]
 ---Options---
  -h, --help  show this help message and exit
   -a A        MAP1.mrc (large)
-  -p1 P1      Predictions for map 1
+  -npa NPA    Numpy array for Predictions for map 1
   -b B        MAP2.mrc (small)
-  -p2 P2      Predictions for map 2
+  -npb NPB    Numpy array for Predictions for map 2
   -t T        Threshold of density map1
   -T T        Threshold of density map2
   -g G        Bandwidth of the Gaussian filter def=16.0, sigma = 0.5*[value entered]
