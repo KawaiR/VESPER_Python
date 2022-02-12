@@ -12,6 +12,7 @@ import numpy as np
 import pyfftw
 import scipy.fft
 from numba.typed import List
+from scipy import ndimage
 from scipy.ndimage import convolve, correlate
 from scipy.spatial.transform import Rotation as R
 from tqdm.notebook import tqdm
@@ -31,23 +32,25 @@ class mrc_obj:
         self.xwidth = mrc.voxel_size.x
         self.ywidth = mrc.voxel_size.y
         self.zwidth = mrc.voxel_size.z
-        self.cent = [
+        self.cent = np.array([
             self.xdim * 0.5,
             self.ydim * 0.5,
             self.zdim * 0.5,
-        ]
-        self.orig = {"x": header.origin.x, "y": header.origin.y, "z": header.origin.z}
+        ])
+        self.orig = np.array(
+            [header.origin.x, header.origin.y, header.origin.z])
         self.data = np.swapaxes(copy.deepcopy(data), 0, 2)
         self.dens = data.flatten()
-        self.vec = np.zeros((self.xdim, self.ydim, self.zdim, 3), dtype="float32")
+        self.vec = np.zeros((self.xdim, self.ydim, self.zdim, 3),
+                            dtype="float32")
         self.dsum = None
         self.Nact = None
         self.ave = None
-        self.std_norm_ave = None
         self.std = None
+        self.std_norm_ave = None
+
 
 def mrc_set_vox_size(mrc, th=0.01, voxel_size=7.0):
-
     # set shape and size
     size = mrc.xdim * mrc.ydim * mrc.zdim
     shape = (mrc.xdim, mrc.ydim, mrc.zdim)
@@ -57,56 +60,47 @@ def mrc_set_vox_size(mrc, th=0.01, voxel_size=7.0):
         mrc.dens = mrc.dens - th
         th = 0.0
 
-    # Trim all the values less than threshold
+    # zero all the values less than threshold
     mrc.dens[mrc.dens < th] = 0.0
     mrc.data[mrc.data < th] = 0.0
 
-    # calculate dmax distance for non-zero entries
+    # calculate maximum distance for non-zero entries
     non_zero_index_list = np.array(np.nonzero(mrc.data)).T
-    # non_zero_index_list[:, [2, 0]] = non_zero_index_list[:, [0, 2]]
     cent_arr = np.array(mrc.cent)
     d2_list = np.linalg.norm(non_zero_index_list - cent_arr, axis=1)
     dmax = max(d2_list)
-
-    # dmax = math.sqrt(mrc.cent[0] ** 2 + mrc.cent[1] ** 2 + mrc.cent[2] ** 2)
 
     print("#dmax=" + str(dmax / mrc.xwidth))
     dmax = dmax * mrc.xwidth
 
     # set new center
-    new_cent = [
-        mrc.cent[0] * mrc.xwidth + mrc.orig["x"],
-        mrc.cent[1] * mrc.xwidth + mrc.orig["y"],
-        mrc.cent[2] * mrc.xwidth + mrc.orig["z"],
-    ]
+    new_cent = mrc.cent * mrc.xwidth + mrc.orig
 
     tmp_size = 2 * dmax / voxel_size
 
+    # get the best size suitable for fft operation
     new_xdim = pyfftw.next_fast_len(int(tmp_size))
 
     # set new origins
-    new_orig = {
-        "x": new_cent[0] - 0.5 * new_xdim * voxel_size,
-        "y": new_cent[1] - 0.5 * new_xdim * voxel_size,
-        "z": new_cent[2] - 0.5 * new_xdim * voxel_size,
-    }
+    new_orig = new_cent - 0.5 * new_xdim * voxel_size
 
     # create new mrc object
-    mrc_set = copy.deepcopy(mrc)
-    mrc_set.orig = new_orig
-    mrc_set.xdim = new_xdim
-    mrc_set.ydim = new_xdim
-    mrc_set.zdim = new_xdim
-    mrc_set.cent = new_cent
-    mrc_set.xwidth = mrc_set.ywidth = mrc_set.zwidth = voxel_size
+    mrc_new = copy.deepcopy(mrc)
+    mrc_new.orig = new_orig
+    mrc_new.xdim = new_xdim
+    mrc_new.ydim = new_xdim
+    mrc_new.zdim = new_xdim
+    mrc_new.cent = new_cent
+    mrc_new.xwidth = mrc_new.ywidth = mrc_new.zwidth = voxel_size
 
-    print("Nvox= " + str(mrc_set.xdim) + ", " + str(mrc_set.ydim) + ", " + str(mrc_set.zdim))
-    print("cent= " + str(new_cent[0]) + ", " + str(new_cent[1]) + ", " + str(new_cent[2]))
-    print("ori= " + str(new_orig["x"]) + ", " + str(new_orig["y"]) + ", " + str(new_orig["z"]))
+    print("Nvox= " + str(mrc_new.xdim) + ", " + str(mrc_new.ydim) + ", " +
+          str(mrc_new.zdim))
+    print("cent= " + str(new_cent[0]) + ", " + str(new_cent[1]) + ", " +
+          str(new_cent[2]))
+    print("ori= " + str(new_orig[0]) + ", " + str(new_orig[1]) + ", " +
+          str(new_orig[2]))
 
-    return mrc, mrc_set
-
-
+    return mrc, mrc_new
 @numba.jit(nopython=True)
 def calc(stp, endp, pos, mrc1_data, fsiv):
     dtotal = 0.0
@@ -131,140 +125,160 @@ def calc(stp, endp, pos, mrc1_data, fsiv):
     return dtotal, pos2
 
 
-def fastVEC(mrc1, mrc2, dreso=16.0):
+@numba.jit(nopython=True)
+def apply_kern(arr, kernel):
+    """Jit compiled function to apply a kernel to a given array (element-wise product).
+​
+    Args:
+        arr (numpy.array): the array to apply the kernel on
+        kernel (numpy.array): the kernel to be applied, should be the same shape as the input arr
+​
+    Returns:
+        dtotal (float): the total density
+        filtered (numpy.array): the filtered array
+    """
+    filtered = np.multiply(arr,kernel) # apply guassian kernel
+    dtotal = np.sum(filtered)
+    return dtotal, filtered
 
-    xydim = mrc1.xdim * mrc1.ydim
-    Ndata = mrc2.xdim * mrc2.ydim * mrc2.zdim
+def gkern3d(l=5, sig=1.):
+    """
+    creates a 3D gaussian kernel with side length `l` and a sigma of `sig`
+    """
+    ax = np.linspace(-(l - 1) / 2., (l - 1) / 2., l)
+    gauss = np.exp(-0.5 * np.square(ax) / np.square(sig)) # calculate gaussian kernel along 1d axis
+    kernel = (gauss[..., None] * gauss)[..., None] * gauss # out product to produce form 3d kernel
+    kernel = kernel / np.sum(kernel) # Normalization
+    return kernel
 
-    print(len(mrc2.dens))
+
+def fastVEC(mrc_source, mrc_dest, dreso=16.0, calc_vec=True):
+    """A function that resample the mrc object to preset voxel size and calculate the vector and other statistics
+​
+    Args:
+        mrc_source (mrc_obj): The source mrc_obj
+        mrc_dest (mrc_obj): The destination mrc_obj
+        dreso (float, optional): Gaussian kernel window size. Defaults to 16.0.
+        calc_vec (bool, optional): Choose to calculate the vector or not, not required for simulated probability maps. Defaults to True.
+​
+    Returns:
+        mrc_dest (mrc_obj): converted mrc_obj
+    """
 
     print("#Start VEC")
-    gstep = mrc1.xwidth
-    fs = (dreso / gstep) * 0.5
-    fs = fs ** 2
-    fsiv = 1.0 / fs
-    fmaxd = (dreso / gstep) * 2.0
+    gstep = mrc_source.xwidth
+    sigma = (dreso / gstep) * 0.3 # calculate the sigma value, 0.3 is an abitrary coefficient
+    fmaxd = (dreso / gstep) * 2.0 # calculate filter maximum radius
     print("#maxd= {fmaxd}".format(fmaxd=fmaxd))
-    print("#fsiv= " + str(fsiv))
 
-    dsum = 0.0
-    Nact = 0
+    dsum = 0.0 # sum of all calculated density values
+    Nact = 0 # non-zero density count
 
-    list_d = []
+    kernel_length = int(2 * np.ceil(fmaxd)) + 1 # calculate the kernel length
+    g_kern = gkern3d(kernel_length, sigma) # generate kernel
 
-    for x in tqdm(range(mrc2.xdim)):
-        for y in range(mrc2.ydim):
-            for z in range(mrc2.zdim):
-                stp = [0] * 3
-                endp = [0] * 3
-                ind2 = 0
-                ind = 0
+    # iterate over the all the positions in the new grid
+    for x in tqdm(range(mrc_dest.xdim)):
+        for y in range(mrc_dest.ydim):
+            for z in range(mrc_dest.zdim):
 
-                pos = [0.0] * 3
-                pos2 = [0.0] * 3
-                ori = [0.0] * 3
+                xyz_arr = np.array((x, y, z))
 
-                tmpcd = [0.0] * 3
+                # find the center in the old grid
+                pos = (xyz_arr * mrc_dest.xwidth + mrc_dest.orig -
+                       mrc_source.orig) / mrc_source.xwidth
 
-                v, dtotal, rd = 0.0, 0.0, 0.0
+                # calculate the index for 1d density vector representation
+                ind = mrc_dest.xdim * mrc_dest.ydim * z + mrc_dest.xdim * y + x
 
-                pos[0] = (x * mrc2.xwidth + mrc2.orig["x"] - mrc1.orig["x"]) / mrc1.xwidth
-                pos[1] = (y * mrc2.xwidth + mrc2.orig["y"] - mrc1.orig["y"]) / mrc1.xwidth
-                pos[2] = (z * mrc2.xwidth + mrc2.orig["z"] - mrc1.orig["z"]) / mrc1.xwidth
-
-                ind = mrc2.xdim * mrc2.ydim * z + mrc2.xdim * y + x
-
-                # check density
-
-                if (
-                    pos[0] < 0
-                    or pos[1] < 0
-                    or pos[2] < 0
-                    or pos[0] >= mrc1.xdim
-                    or pos[1] >= mrc1.ydim
-                    or pos[2] >= mrc1.zdim
-                ):
-                    mrc2.dens[ind] = 0.0
-                    mrc2.vec[x][y][z][0] = 0.0
-                    mrc2.vec[x][y][z][1] = 0.0
-                    mrc2.vec[x][y][z][2] = 0.0
+                # skip calculation if position is outside of the old grid
+                if (pos[0] < 0 or pos[1] < 0 or pos[2] < 0
+                        or pos[0] >= mrc_source.xdim
+                        or pos[1] >= mrc_source.ydim
+                        or pos[2] >= mrc_source.zdim):
+                    mrc_dest.dens[ind] = 0.0
+                    mrc_dest.vec[x][y][z] = 0.0
                     continue
 
-                if mrc1.data[int(pos[0])][int(pos[1])][int(pos[2])] == 0:
-                    mrc2.dens[ind] = 0.0
-                    mrc2.vec[x][y][z][0] = 0.0
-                    mrc2.vec[x][y][z][1] = 0.0
-                    mrc2.vec[x][y][z][2] = 0.0
+                # skip calculation if the old position has zero density
+                if mrc_source.data[int(pos[0])][int(pos[1])][int(pos[2])] == 0:
+                    mrc_dest.dens[ind] = 0.0
+                    mrc_dest.vec[x][y][z] = 0.0
                     continue
-
-                ori[0] = pos[0]
-                ori[1] = pos[1]
-                ori[2] = pos[2]
 
                 # Start Point
-                stp[0] = int(pos[0] - fmaxd)
-                stp[1] = int(pos[1] - fmaxd)
-                stp[2] = int(pos[2] - fmaxd)
+                stp = (pos - fmaxd).astype(np.int32)
 
-                # set start and end point
+                # End Point
+                endp = (pos + fmaxd + 1).astype(np.int32)
+
+                # initialize padding flags
+                x_left_padding = False
+                y_left_padding = False
+                z_left_padding = False
+
+                # set start and end point, add padding if applicable
                 if stp[0] < 0:
+                    x_left_padding = True
                     stp[0] = 0
                 if stp[1] < 0:
+                    y_left_padding = True
                     stp[1] = 0
                 if stp[2] < 0:
+                    z_left_padding = True
                     stp[2] = 0
 
-                endp[0] = int(pos[0] + fmaxd + 1)
-                endp[1] = int(pos[1] + fmaxd + 1)
-                endp[2] = int(pos[2] + fmaxd + 1)
-
-                if endp[0] >= mrc1.xdim:
-                    endp[0] = mrc1.xdim
-                if endp[1] >= mrc1.ydim:
-                    endp[1] = mrc1.ydim
-                if endp[2] >= mrc1.zdim:
-                    endp[2] = mrc1.zdim
-
-                # setup for numba acc
-                stp_t = List()
-                endp_t = List()
-                pos_t = List()
-                [stp_t.append(x) for x in stp]
-                [endp_t.append(x) for x in endp]
-                [pos_t.append(x) for x in pos]
-
+                if endp[0] > mrc_source.xdim:
+                    endp[0] = mrc_source.xdim
+                if endp[1] > mrc_source.ydim:
+                    endp[1] = mrc_source.ydim
+                if endp[2] > mrc_source.zdim:
+                    endp[2] = mrc_source.zdim
                 # compute the total density
-                dtotal, pos2 = calc(stp_t, endp_t, pos_t, mrc1.data, fsiv)
+                selected_region = mrc_source.data[stp[0]:endp[0], stp[1]:endp[1], stp[2]:endp[2]]  # select the region to be sampled in the original map
 
-                mrc2.dens[ind] = dtotal
-                mrc2.data[x][y][z] = dtotal
+                padding = kernel_length - (endp - stp)  # calculate padding values
 
-                if dtotal == 0:
-                    mrc2.vec[x][y][z][0] = 0.0
-                    mrc2.vec[x][y][z][1] = 0.0
-                    mrc2.vec[x][y][z][2] = 0.0
-                    continue
+                kernel_x_range, kernel_y_range, kernel_z_range = [0, 0], [0, 0], [0, 0] # init padding values to be all zeros
 
-                rd = 1.0 / dtotal
+                # apply the directions for padding values
+                if padding[0] != 0:
+                    if x_left_padding:
+                        kernel_x_range = [padding[0], 0]
+                    else:
+                        kernel_x_range = [0, padding[0]]
+                if padding[1] != 0:
+                    if y_left_padding:
+                        kernel_y_range = [padding[1], 0]
+                    else:
+                        kernel_y_range = [0, padding[1]]
+                if padding[2] != 0:
+                    if z_left_padding:
+                        kernel_z_range = [padding[2], 0]
+                    else:
+                        kernel_z_range = [0, padding[2]]
 
-                pos2[0] *= rd
-                pos2[1] *= rd
-                pos2[2] *= rd
+                # apply padding to the selected region in old map
+                padded_region = np.pad(selected_region, ((kernel_x_range[0],kernel_x_range[1]),(kernel_y_range[0], kernel_y_range[1]),(kernel_z_range[0], kernel_z_range[1])))
 
-                tmpcd[0] = pos2[0] - pos[0]
-                tmpcd[1] = pos2[1] - pos[1]
-                tmpcd[2] = pos2[2] - pos[2]
+                # apply the kernel to the padded array
+                dtotal, weighted_samples = apply_kern(padded_region, g_kern)
 
-                dvec = math.sqrt(tmpcd[0] ** 2 + tmpcd[1] ** 2 + tmpcd[2] ** 2)
+                # fill in the dens and data array
+                mrc_dest.dens[ind] = dtotal
+                mrc_dest.data[x][y][z] = dtotal
 
-                if dvec == 0:
-                    dvec = 1.0
 
-                rdvec = 1.0 / dvec
+                # calculate the vector value using center_of_mass and normalize
+                if calc_vec:
+                    vec = np.array(ndimage.center_of_mass(weighted_samples) - np.array([kernel_length] * 3) / 2.)
 
-                mrc2.vec[x][y][z][0] = tmpcd[0] * rdvec
-                mrc2.vec[x][y][z][1] = tmpcd[1] * rdvec
-                mrc2.vec[x][y][z][2] = tmpcd[2] * rdvec
+                    if dtotal == 0:
+                        mrc_dest.vec[x][y][z] = 0.0
+                        continue
+
+                    normalized_v = vec / np.sqrt(np.sum(vec**2)) # normalization to unit vector
+                    mrc_dest.vec[x][y][z] = normalized_v # fill in the vector array in new map
 
                 dsum += dtotal
                 Nact += 1
@@ -273,15 +287,165 @@ def fastVEC(mrc1, mrc2, dreso=16.0):
     print(dsum)
     print(Nact)
 
-    mrc2.dsum = dsum
-    mrc2.Nact = Nact
-    mrc2.ave = dsum / float(Nact)
-    mrc2.std = np.linalg.norm(mrc2.dens[mrc2.dens > 0])
-    mrc2.std_norm_ave = np.linalg.norm(mrc2.dens[mrc2.dens > 0] - mrc2.ave)
+    mrc_dest.dsum = dsum
+    mrc_dest.Nact = Nact
+    mrc_dest.ave = dsum / float(Nact)
+    mrc_dest.std = np.linalg.norm(mrc_dest.dens[mrc_dest.dens > 0])
+    mrc_dest.std_norm_ave = np.linalg.norm(mrc_dest.dens[mrc_dest.dens > 0] -
+                                           mrc_dest.ave)
 
-    print("#MAP AVE={ave} STD={std} STD_norm={std_norm}".format(ave=mrc2.ave, std=mrc2.std, std_norm=mrc2.std_norm_ave))
-    # return False
-    return mrc2
+    print("#MAP AVE={ave} STD={std} STD_norm={std_norm}".format(
+        ave=mrc_dest.ave, std=mrc_dest.std, std_norm=mrc_dest.std_norm_ave))
+
+    return mrc_dest
+
+def fastVEC_prob(mrc_source, mrc_dest, dreso=16.0, calc_vec=False):
+    """A function that resample the mrc object to preset voxel size and calculate the vector and other statistics
+​
+    Args:
+        mrc_source (mrc_obj): The source mrc_obj
+        mrc_dest (mrc_obj): The destination mrc_obj
+        dreso (float, optional): Gaussian kernel window size. Defaults to 16.0.
+        calc_vec (bool, optional): Choose to calculate the vector or not, not required for simulated probability maps. Defaults to True.
+​
+    Returns:
+        mrc_dest (mrc_obj): converted mrc_obj
+    """
+
+    print("#Start VEC")
+    gstep = mrc_source.xwidth
+    sigma = (dreso / gstep) * 0.3 # calculate the sigma value, 0.3 is an abitrary coefficient
+    fmaxd = (dreso / gstep) * 2.0 # calculate filter maximum radius
+    print("#maxd= {fmaxd}".format(fmaxd=fmaxd))
+
+    dsum = 0.0 # sum of all calculated density values
+    Nact = 0 # non-zero density count
+
+    kernel_length = int(2 * np.ceil(fmaxd)) + 1 # calculate the kernel length
+    g_kern = gkern3d(kernel_length, sigma) # generate kernel
+
+    # iterate over the all the positions in the new grid
+    for x in tqdm(range(mrc_dest.xdim)):
+        for y in range(mrc_dest.ydim):
+            for z in range(mrc_dest.zdim):
+
+                xyz_arr = np.array((x, y, z))
+
+                # find the center in the old grid
+                pos = (xyz_arr * mrc_dest.xwidth + mrc_dest.orig -
+                       mrc_source.orig) / mrc_source.xwidth
+
+                # calculate the index for 1d density vector representation
+                ind = mrc_dest.xdim * mrc_dest.ydim * z + mrc_dest.xdim * y + x
+
+                # skip calculation if position is outside of the old grid
+                if (pos[0] < 0 or pos[1] < 0 or pos[2] < 0
+                        or pos[0] >= mrc_source.xdim
+                        or pos[1] >= mrc_source.ydim
+                        or pos[2] >= mrc_source.zdim):
+                    mrc_dest.dens[ind] = 0.0
+                    mrc_dest.vec[x][y][z] = 0.0
+                    continue
+
+                # skip calculation if the old position has zero density
+                if mrc_source.data[int(pos[0])][int(pos[1])][int(pos[2])] == 0:
+                    mrc_dest.dens[ind] = 0.0
+                    mrc_dest.vec[x][y][z] = 0.0
+                    continue
+
+                # Start Point
+                stp = (pos - fmaxd).astype(np.int32)
+
+                # End Point
+                endp = (pos + fmaxd + 1).astype(np.int32)
+
+                # initialize padding flags
+                x_left_padding = False
+                y_left_padding = False
+                z_left_padding = False
+
+                # set start and end point, add padding if applicable
+                if stp[0] < 0:
+                    x_left_padding = True
+                    stp[0] = 0
+                if stp[1] < 0:
+                    y_left_padding = True
+                    stp[1] = 0
+                if stp[2] < 0:
+                    z_left_padding = True
+                    stp[2] = 0
+
+                if endp[0] > mrc_source.xdim:
+                    endp[0] = mrc_source.xdim
+                if endp[1] > mrc_source.ydim:
+                    endp[1] = mrc_source.ydim
+                if endp[2] > mrc_source.zdim:
+                    endp[2] = mrc_source.zdim
+                # compute the total density
+                selected_region = mrc_source.data[stp[0]:endp[0], stp[1]:endp[1], stp[2]:endp[2]]  # select the region to be sampled in the original map
+
+                padding = kernel_length - (endp - stp)  # calculate padding values
+
+                kernel_x_range, kernel_y_range, kernel_z_range = [0, 0], [0, 0], [0, 0] # init padding values to be all zeros
+
+                # apply the directions for padding values
+                if padding[0] != 0:
+                    if x_left_padding:
+                        kernel_x_range = [padding[0], 0]
+                    else:
+                        kernel_x_range = [0, padding[0]]
+                if padding[1] != 0:
+                    if y_left_padding:
+                        kernel_y_range = [padding[1], 0]
+                    else:
+                        kernel_y_range = [0, padding[1]]
+                if padding[2] != 0:
+                    if z_left_padding:
+                        kernel_z_range = [padding[2], 0]
+                    else:
+                        kernel_z_range = [0, padding[2]]
+
+                # apply padding to the selected region in old map
+                padded_region = np.pad(selected_region, ((kernel_x_range[0],kernel_x_range[1]),(kernel_y_range[0], kernel_y_range[1]),(kernel_z_range[0], kernel_z_range[1])))
+
+                # apply the kernel to the padded array
+                dtotal, weighted_samples = apply_kern(padded_region, g_kern)
+
+                # fill in the dens and data array
+                mrc_dest.dens[ind] = dtotal
+                mrc_dest.data[x][y][z] = dtotal
+
+
+                # calculate the vector value using center_of_mass and normalize
+                if calc_vec:
+                    vec = np.array(ndimage.center_of_mass(weighted_samples) - np.array([kernel_length] * 3) / 2.)
+
+                    if dtotal == 0:
+                        mrc_dest.vec[x][y][z] = 0.0
+                        continue
+
+                    normalized_v = vec / np.sqrt(np.sum(vec**2)) # normalization to unit vector
+                    mrc_dest.vec[x][y][z] = normalized_v # fill in the vector array in new map
+
+                dsum += dtotal
+                Nact += 1
+
+    print("#End LDP")
+    print(dsum)
+    print(Nact)
+
+    mrc_dest.dsum = dsum
+    mrc_dest.Nact = Nact
+    mrc_dest.ave = dsum / float(Nact)
+    mrc_dest.std = np.linalg.norm(mrc_dest.dens[mrc_dest.dens > 0])
+    mrc_dest.std_norm_ave = np.linalg.norm(mrc_dest.dens[mrc_dest.dens > 0] -
+                                           mrc_dest.ave)
+
+    print("#MAP AVE={ave} STD={std} STD_norm={std_norm}".format(
+        ave=mrc_dest.ave, std=mrc_dest.std, std_norm=mrc_dest.std_norm_ave))
+
+    return mrc_dest
+
 
 def rot_pos(vec, angle, inv=False):
     r = R.from_euler("zyx", angle, degrees=True)
@@ -1091,7 +1255,7 @@ def show_vec(origin, sampled_mrc_vec, sampled_mrc_data, sampled_mrc_score, sampl
 
     dim = sampled_mrc_data.shape[0]
 
-    origin = np.array([origin["x"], origin["y"], origin["z"]])
+    origin = np.array([origin[0], origin[1], origin[2]])
     trans = np.array(trans)
 
     if trans[0] > 0.5 * dim:
@@ -1133,158 +1297,6 @@ def show_vec(origin, sampled_mrc_vec, sampled_mrc_data, sampled_mrc_score, sampl
                     nres += 1
 
 @numba.jit(nopython=False, forceobj=True)
-def fastVEC_prob(mrc1, mrc2, dreso=16.0):
-
-    xydim = mrc1.xdim * mrc1.ydim
-    Ndata = mrc2.xdim * mrc2.ydim * mrc2.zdim
-
-    print(len(mrc2.dens))
-
-    print("#Start VEC")
-    gstep = mrc1.xwidth
-    fs = (dreso / gstep) * 0.5
-    fs = fs ** 2
-    fsiv = 1.0 / fs
-    fmaxd = (dreso / gstep) * 2.0
-    print("#maxd= {fmaxd}".format(fmaxd=fmaxd))
-    print("#fsiv= " + str(fsiv))
-
-    dsum = 0.0
-    Nact = 0
-
-    list_d = []
-
-    for x in tqdm(range(mrc2.xdim)):
-        for y in range(mrc2.ydim):
-            for z in range(mrc2.zdim):
-                stp = [0] * 3
-                endp = [0] * 3
-                ind2 = 0
-                ind = 0
-
-                pos = [0.0] * 3
-                pos2 = [0.0] * 3
-                ori = [0.0] * 3
-
-                tmpcd = [0.0] * 3
-
-                v, dtotal, rd = 0.0, 0.0, 0.0
-
-                pos[0] = (x * mrc2.xwidth + mrc2.orig["x"] - mrc1.orig["x"]) / mrc1.xwidth
-                pos[1] = (y * mrc2.xwidth + mrc2.orig["y"] - mrc1.orig["y"]) / mrc1.xwidth
-                pos[2] = (z * mrc2.xwidth + mrc2.orig["z"] - mrc1.orig["z"]) / mrc1.xwidth
-
-                ind = mrc2.xdim * mrc2.ydim * z + mrc2.xdim * y + x
-
-                # check density
-
-                if (
-                    pos[0] < 0
-                    or pos[1] < 0
-                    or pos[2] < 0
-                    or pos[0] >= mrc1.xdim
-                    or pos[1] >= mrc1.ydim
-                    or pos[2] >= mrc1.zdim
-                ):
-                    mrc2.dens[ind] = 0.0
-                    #mrc2.vec[x][y][z][0] = 0.0
-                    #mrc2.vec[x][y][z][1] = 0.0
-                    #mrc2.vec[x][y][z][2] = 0.0
-                    continue
-
-                if mrc1.data[int(pos[0])][int(pos[1])][int(pos[2])] == 0:
-                    mrc2.dens[ind] = 0.0
-                    #mrc2.vec[x][y][z][0] = 0.0
-                    #mrc2.vec[x][y][z][1] = 0.0
-                    #mrc2.vec[x][y][z][2] = 0.0
-                    continue
-
-                ori[0] = pos[0]
-                ori[1] = pos[1]
-                ori[2] = pos[2]
-
-                # Start Point
-                stp[0] = int(pos[0] - fmaxd)
-                stp[1] = int(pos[1] - fmaxd)
-                stp[2] = int(pos[2] - fmaxd)
-
-                # set start and end point
-                if stp[0] < 0:
-                    stp[0] = 0
-                if stp[1] < 0:
-                    stp[1] = 0
-                if stp[2] < 0:
-                    stp[2] = 0
-
-                endp[0] = int(pos[0] + fmaxd + 1)
-                endp[1] = int(pos[1] + fmaxd + 1)
-                endp[2] = int(pos[2] + fmaxd + 1)
-
-                if endp[0] >= mrc1.xdim:
-                    endp[0] = mrc1.xdim
-                if endp[1] >= mrc1.ydim:
-                    endp[1] = mrc1.ydim
-                if endp[2] >= mrc1.zdim:
-                    endp[2] = mrc1.zdim
-
-                # setup for numba acc
-                stp_t = List()
-                endp_t = List()
-                pos_t = List()
-                [stp_t.append(x) for x in stp]
-                [endp_t.append(x) for x in endp]
-                [pos_t.append(x) for x in pos]
-
-                # compute the total density
-                dtotal, pos2 = calc(stp_t, endp_t, pos_t, mrc1.data, fsiv)
-
-                mrc2.dens[ind] = dtotal
-                mrc2.data[x][y][z] = dtotal
-
-                ''''if dtotal == 0:
-                    mrc2.vec[x][y][z][0] = 0.0
-                    mrc2.vec[x][y][z][1] = 0.0
-                    mrc2.vec[x][y][z][2] = 0.0
-                    continue'''
-
-                ''''rd = 1.0 / dtotal
-
-                pos2[0] *= rd
-                pos2[1] *= rd
-                pos2[2] *= rd
-
-                tmpcd[0] = pos2[0] - pos[0]
-                tmpcd[1] = pos2[1] - pos[1]
-                tmpcd[2] = pos2[2] - pos[2]
-
-                dvec = math.sqrt(tmpcd[0] ** 2 + tmpcd[1] ** 2 + tmpcd[2] ** 2)
-
-                if dvec == 0:
-                    dvec = 1.0
-
-                rdvec = 1.0 / dvec'''
-
-                #mrc2.vec[x][y][z][0] = tmpcd[0] * rdvec
-                #mrc2.vec[x][y][z][1] = tmpcd[1] * rdvec
-                #mrc2.vec[x][y][z][2] = tmpcd[2] * rdvec
-
-                dsum += dtotal
-                Nact += 1
-
-    print("#End LDP")
-    print(dsum)
-    print(Nact)
-
-    mrc2.dsum = dsum
-    mrc2.Nact = Nact
-    mrc2.ave = dsum / float(Nact)
-    mrc2.std = np.linalg.norm(mrc2.dens[mrc2.dens > 0])
-    mrc2.std_norm_ave = np.linalg.norm(mrc2.dens[mrc2.dens > 0] - mrc2.ave)
-
-    print("#MAP AVE={ave} STD={std} STD_norm={std_norm}".format(ave=mrc2.ave, std=mrc2.std, std_norm=mrc2.std_norm_ave))
-    # return False
-    return mrc2
-
 def rot_mrc_prob(orig_mrc_data, orig_mrc_vec,mrc_search_p1_data, mrc_search_p2_data, mrc_search_p3_data, mrc_search_p4_data,  angle):
     dim = orig_mrc_vec.shape[0]
 
