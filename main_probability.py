@@ -46,7 +46,7 @@ if __name__ == "__main__":
     prob.add_argument('-npa', type=str, required=True, help='numpy array for Predictions for map 1')
     prob.add_argument('-b', type=str, required=True, help='MAP2.mrc (small)')
     prob.add_argument('-npb', type=str, required=True, help='numpy array for Predictions for map 2')
-    prob.add_argument('-alpha', type=int, default=1,required=True, help='The weighting parameter ')
+    prob.add_argument('-alpha', type=int, default=1,required=False, help='The weighting parameter ')
     prob.add_argument('-t', type=float, help='Threshold of density map1')
     prob.add_argument('-T', type=float, help='Threshold of density map2')
     prob.add_argument('-g', type=float, default=16.0, help='Bandwidth of the Gaussian filter def=16.0, sigma = 0.5*[value entered]')
