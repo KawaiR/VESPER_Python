@@ -981,7 +981,7 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
 
     return refined_list
 
-def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search,mrc_search_p1,mrc_search_p2,mrc_search_p3,mrc_search_p4, TopN=10, ang=10, mode="VecProduct", is_eval_mode=False):
+def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search,mrc_search_p1,mrc_search_p2,mrc_search_p3,mrc_search_p4,alpha=1,TopN=10, ang=10, mode="VecProduct", is_eval_mode=False):
 
     if is_eval_mode:
         print("#For Evaluation Mode")
