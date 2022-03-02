@@ -94,3 +94,15 @@ Usage: main_probability.py prob [-h] -a A -npa NPA -b B -npb NPB [-t T] [-T T] [
               L: Laplacian Filtering Mode
   -E E        Evaluation mode of the current position def=false
 ```
+## Identify the best fitting of two EM maps.
+Run VESPER in either probability or original mode.
+#### Output Format: 
+By default, VESPER writes the vector information for each of top 10 models after local refinement into VESPER output. Vector information for the first model starts with two lines like the ones shown below.
+```
+Overlap= 0.02156028368794326 76/3525 CC= 0.012639913 PCC= -0.09214708 Scoreplusprob= 0.00019255988782371103 Scoreprobonly= 3.5619823131948194e-05
+Score=  58.680508
+```
+Score shows the DOT score, which is the summation of dot products of matched vectors between two maps. Scoreplusprob shows the normalized score which is the sum of the normalised dot score as well as the normalised probability dot score. Scoreprobonly represents only the normalized probability dot score.
+
+## Visualizing the transformed positions of the query maps.
+
