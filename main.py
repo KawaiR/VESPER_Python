@@ -7,7 +7,6 @@ import csv
 
 import argparse
 from typing import Text
-import mkdir
 import mrcfile
 import numba
 import numpy as np
