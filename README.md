@@ -17,11 +17,11 @@ Data: https://drive.google.com/drive/folders/1os3i7YmlMew3dmfovlzRU4WVuJ7nKzPX?u
 ## Software Compatibility:
 To ensure all versions are compatible, run:
 ```
-pip3 install -r requirement.txt --user
+pip3 install -r requirements.txt --user
 ```
 or
 ```
-pip install -r requirement.txt --user
+pip install -r requirements.txt --user
 ```
 
 ## VESPER_Python protocol
