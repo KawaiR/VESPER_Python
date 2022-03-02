@@ -73,26 +73,27 @@ Usage: main.py orig [-h] -a A -b B [-t T] [-T T] [-g G] [-s S] [-A A] [-N N] [-S
 ```
 (2) Mode 2: Probability maps generated for each secondary structure in both maps used for alignment must be generated using Emap2sec+ first and then converted into .npy format using the interpolation script before running this mode. (With Secondary structure matching.)
 ```
-Usage: main_probability.py prob [-h] -a A -npa NPA -b B -npb NPB [-t T] [-T T] [-g G] [-s S] [-A A] [-N N] [-S S] [-M M] [-E E]
+Usage: main.py prob [-h] -a A -npa NPA -b B -npb NPB [-t T] [-T T] [-g G] [-s S] [-A A] [-N N] [-S S] [-M M] [-E E]
 ---Options---
  -h, --help  show this help message and exit
-  -a A        MAP1.mrc (large)
-  -npa NPA    Numpy array for Predictions for map 1
-  -b B        MAP2.mrc (small)
-  -npb NPB    Numpy array for Predictions for map 2
-  -t T        Threshold of density map1
-  -T T        Threshold of density map2
-  -g G        Bandwidth of the Gaussian filter def=16.0, sigma = 0.5*[value entered]
-  -s S        Sampling voxel spacing def=7.0
-  -A A        Sampling angle spacing def=30.0
-  -N N        Refine Top [int] models def=10
-  -S S        Show topN models in PDB format def=false
-  -M M        V: vector product mode (default)
-              O: overlap mode
-              C: Cross Correlation Coefficient Mode
-              P: Pearson Correlation Coefficient Mode
-              L: Laplacian Filtering Mode
-  -E E        Evaluation mode of the current position def=false
+  -a A          MAP1.mrc (large)
+  -npa NPA      Numpy array for Predictions for map 1
+  -b B          MAP2.mrc (small)
+  -npb NPB      Numpy array for Predictions for map 2
+  -alpha ALPHA  The weighting parameter
+  -t T          Threshold of density map1
+  -T T          Threshold of density map2
+  -g G          Bandwidth of the Gaussian filter def=16.0, sigma = 0.5*[value entered]
+  -s S          Sampling voxel spacing def=7.0
+  -A A          Sampling angle spacing def=30.0
+  -N N          Refine Top [int] models def=10
+  -S S          Show topN models in PDB format def=false
+  -M M          V: vector product mode (default)
+                O: overlap mode
+                C: Cross Correlation Coefficient Mode
+                P: Pearson Correlation Coefficient Mode
+                L: Laplacian Filtering Mode
+  -E E          Evaluation mode of the current position def=false
 ```
 ## Identify the best fitting of two EM maps.
 Run VESPER in either probability or original mode.
