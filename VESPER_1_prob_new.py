@@ -636,7 +636,18 @@ def find_best_trans_list(input_list):
     
     return best, trans
 
-def find_best_trans_list_prob(input_list):
+def find_best_trans_list_prob(input_list, alpha):
+    
+    """find the best translation based on list of Z score normalised FFT transformation results
+
+    Args:
+        input_list (numpy.array): FFT result list, alpha: weighting parameter
+
+    Returns:
+        best (float): the maximum score found
+        trans (list(int)): the best translation associated with the maximum score
+        best_prob: the maximum probability normalised score
+    """
     
     sum_arr = np.zeros_like(input_list[0])
     #for arr in input_list:
@@ -654,7 +665,10 @@ def find_best_trans_list_prob(input_list):
     
     
     #sum_arr = sum_arr+input_list[0]+input_list[1]+input_list[2]+(input_list[3] + input_list[4] + input_list[5] + input_list[6])/5000000.00
-    sum_arr = sum_arr+dot_array_z+prob_array_z
+    if alpha==1:
+        sum_arr = sum_arr+dot_array_z+prob_array_z
+    else:
+        sum_arr = sum_arr+(alpha)*dot_array_z+(1-alpha)*prob_array_z
     prob_arr=input_list[3] + input_list[4] + input_list[5] + input_list[6]
     best = np.amax(sum_arr)
     best_prob=np.amax(prob_array_z)
@@ -981,7 +995,32 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
 
     return refined_list
 
-def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search,mrc_search_p1,mrc_search_p2,mrc_search_p3,mrc_search_p4,alpha=1,TopN=10, ang=10, mode="VecProduct", is_eval_mode=False):
+def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search,mrc_search_p1,mrc_search_p2,mrc_search_p3,mrc_search_p4, alpha=1, TopN=10, ang=10, mode="VecProduct", is_eval_mode=False):
+
+    """The main search function for fining the best superimposition for the target and the query map.
+
+    Args:
+        mrc_P1: large probability map1
+        mrc_P2: large probability map2
+        mrc_P3: large probability map3
+        mrc_P4: large probability map4
+        mrc_search_p1: query probability map1
+        mrc_search_p2: query probability map2
+        mrc_search_p3: query probability map3
+        mrc_search_p4: query probability map4
+        alpha: weighting parameter
+        mrc_target (mrc_obj): the input target map
+        mrc_search (mrc_obj): the input query map
+        TopN (int, optional): the number of top superimposition to find. Defaults to 10.
+        ang (int, optional): search interval for angular rotation. Defaults to 30.
+        mode (str, optional): special modes to use. Defaults to "VecProduct".
+        is_eval_mode (bool, optional): set the evaluation mode true will only perform scoring but not searching. Defaults to False.
+        save_path (str, optional): the path to save output .pdb files. Defaults to the current directory.
+
+    Returns:
+        refined_list (list): a list of refined search results including the probability score
+    """
+
 
     if is_eval_mode:
         print("#For Evaluation Mode")
@@ -1145,7 +1184,7 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search,m
             
             fft_result_list = fft_search_best_dot(target_list, query_list, a, b, c, fft_object, ifft_object)
                     
-            best, trans, best_prob = find_best_trans_list_prob(fft_result_list)
+            best, trans, best_prob = find_best_trans_list_prob(fft_result_list, alpha)
             
         else:
             best, trans = fft_search_score_trans_1d(
@@ -1206,7 +1245,7 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search,m
                     
                     fft_result_list = fft_search_best_dot(target_list, query_list, a, b, c, fft_object, ifft_object)
                     
-                    best, trans, best_prob = find_best_trans_list_prob(fft_result_list)
+                    best, trans, best_prob = find_best_trans_list_prob(fft_result_list, alpha)
                     
                     # best, trans = fft_search_score_trans(X1, Y1, Z1, rotated_vec, a, b, c, fft_object, ifft_object)
                 else:
