@@ -105,16 +105,16 @@ if __name__ == "__main__":
         if mrc_N1.xdim > mrc_N2.xdim:
             dim = mrc_N2.xdim = mrc_N2.ydim = mrc_N2.zdim = mrc_N1.xdim
 
-            mrc_N2.orig["x"] = mrc_N2.cent[0] - 0.5 * voxel_spacing * mrc_N2.xdim
-            mrc_N2.orig["y"] = mrc_N2.cent[1] - 0.5 * voxel_spacing * mrc_N2.xdim
-            mrc_N2.orig["z"] = mrc_N2.cent[2] - 0.5 * voxel_spacing * mrc_N2.xdim
+            mrc_N2.orig[0] = mrc_N2.cent[0] - 0.5 * voxel_spacing * mrc_N2.xdim
+            mrc_N2.orig[1] = mrc_N2.cent[1] - 0.5 * voxel_spacing * mrc_N2.xdim
+            mrc_N2.orig[2] = mrc_N2.cent[2] - 0.5 * voxel_spacing * mrc_N2.xdim
 
         else:
             dim = mrc_N1.xdim = mrc_N1.ydim = mrc_N1.zdim = mrc_N2.xdim
 
-            mrc_N1.orig["x"] = mrc_N1.cent[0] - 0.5 * voxel_spacing * mrc_N1.xdim
-            mrc_N1.orig["y"] = mrc_N1.cent[1] - 0.5 * voxel_spacing * mrc_N1.xdim
-            mrc_N1.orig["z"] = mrc_N1.cent[2] - 0.5 * voxel_spacing * mrc_N1.xdim
+            mrc_N1.orig[0] = mrc_N1.cent[0] - 0.5 * voxel_spacing * mrc_N1.xdim
+            mrc_N1.orig[1] = mrc_N1.cent[1] - 0.5 * voxel_spacing * mrc_N1.xdim
+            mrc_N1.orig[2] = mrc_N1.cent[2] - 0.5 * voxel_spacing * mrc_N1.xdim
 
         mrc_N1.dens = np.zeros((dim ** 3, 1))
         mrc_N1.vec = np.zeros((dim, dim, dim, 3), dtype="float32")
