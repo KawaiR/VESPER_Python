@@ -1,17 +1,15 @@
 # coding: utf-8
-
 import concurrent.futures
 import copy
-import math
 import multiprocessing
 import os
+import time
 
 import mrcfile
 import numba
 import numpy as np
 import pyfftw
 from scipy import ndimage
-from scipy.ndimage import convolve
 from scipy.spatial.transform import Rotation as R
 from tqdm import tqdm
 
@@ -20,38 +18,58 @@ pyfftw.config.NUM_THREADS = multiprocessing.cpu_count()
 
 
 class mrc_obj:
+    """A mrc object that represents the density data and statistics of a given mrc file"""
+
     def __init__(self, path):
+        # open the specified mrcfile and read the header information
         mrc = mrcfile.open(path)
         data = mrc.data
         header = mrc.header
+
+        # read and store the voxel widths and dimensions from the header
         self.xdim = int(header.nx)
         self.ydim = int(header.ny)
         self.zdim = int(header.nz)
         self.xwidth = mrc.voxel_size.x
         self.ywidth = mrc.voxel_size.y
         self.zwidth = mrc.voxel_size.z
-        self.cent = np.array([
-            self.xdim * 0.5,
-            self.ydim * 0.5,
-            self.zdim * 0.5,
-        ])
-        self.orig = np.array(
-            [header.origin.x, header.origin.y, header.origin.z])
+
+        # set the center to be the half the dimensions
+        self.cent = np.array([self.xdim * 0.5, self.ydim * 0.5, self.zdim * 0.5,
+                              ])
+
+        # read and store the origin coordinate from the header
+        self.orig = np.array([header.origin.x, header.origin.y, header.origin.z])
+
+        # swap the xz axes of density data array and store in self.data
         self.data = np.swapaxes(copy.deepcopy(data), 0, 2)
+
+        # create 1d representation of the density value by flattening the data array
         self.dens = data.flatten()
-        self.vec = np.zeros((self.xdim, self.ydim, self.zdim, 3),
-                            dtype="float32")
-        self.dsum = None
-        self.Nact = None
-        self.ave = None
-        self.std = None
-        self.std_norm_ave = None
+
+        # initialize the vector array to be same shape as data but will all zeros
+        self.vec = np.zeros((self.xdim, self.ydim, self.zdim, 3), dtype="float32")
+
+        # initialize all the statistics values
+        self.dsum = None  # total density value
+        self.Nact = None  # non-zero density voxel count
+        self.ave = None  # average density value
+        self.std_norm_ave = None  # L2 norm nomalized with average density value
+        self.std = None  # unnormalize L2 norm
 
 
 def mrc_set_vox_size(mrc, th=0.00, voxel_size=7.0):
-    # set shape and size
-    size = mrc.xdim * mrc.ydim * mrc.zdim
-    shape = (mrc.xdim, mrc.ydim, mrc.zdim)
+    """Set the voxel size for the specified mrc_obj
+
+    Args:
+        mrc (mrc_obj): [the target mrc_obj to set the voxel size for]
+        th (float, optional): preset threshold for density cutoff. Defaults to 0.01.
+        voxel_size (float, optional): the granularity of the voxel in terms of angstroms. Defaults to 7.0.
+
+    Returns:
+        mrc (mrc_obj): the original mrc_obj
+        mrc_new (mrc_obj): a processed mrc_obj
+    """
 
     # if th < 0 add th to all value
     if th < 0:
@@ -102,37 +120,13 @@ def mrc_set_vox_size(mrc, th=0.00, voxel_size=7.0):
 
 
 @numba.jit(nopython=True)
-def calc(stp, endp, pos, mrc1_data, fsiv):
-    dtotal = 0.0
-    pos2 = np.zeros((3,))
-
-    for xp in range(stp[0], endp[0]):
-        rx = float(xp) - pos[0]
-        rx = rx ** 2
-        for yp in range(stp[1], endp[1]):
-            ry = float(yp) - pos[1]
-            ry = ry ** 2
-            for zp in range(stp[2], endp[2]):
-                rz = float(zp) - pos[2]
-                rz = rz ** 2
-                d2 = rx + ry + rz
-                v = mrc1_data[xp][yp][zp] * math.exp(-1.5 * d2 * fsiv)
-                dtotal += v
-                pos2[0] += v * float(xp)
-                pos2[1] += v * float(yp)
-                pos2[2] += v * float(zp)
-
-    return dtotal, pos2
-
-
-@numba.jit(nopython=True)
 def apply_kern(arr, kernel):
     """Jit compiled function to apply a kernel to a given array (element-wise product).
-​
+
     Args:
         arr (numpy.array): the array to apply the kernel on
         kernel (numpy.array): the kernel to be applied, should be the same shape as the input arr
-​
+
     Returns:
         dtotal (float): the total density
         filtered (numpy.array): the filtered array
@@ -155,13 +149,13 @@ def gkern3d(l=5, sig=1.):
 
 def fastVEC(mrc_source, mrc_dest, dreso=16.0, calc_vec=True):
     """A function that resample the mrc object to preset voxel size and calculate the vector and other statistics
-​
+
     Args:
         mrc_source (mrc_obj): The source mrc_obj
         mrc_dest (mrc_obj): The destination mrc_obj
         dreso (float, optional): Gaussian kernel window size. Defaults to 16.0.
         calc_vec (bool, optional): Choose to calculate the vector or not, not required for simulated probability maps. Defaults to True.
-​
+
     Returns:
         mrc_dest (mrc_obj): converted mrc_obj
     """
@@ -304,44 +298,59 @@ def fastVEC(mrc_source, mrc_dest, dreso=16.0, calc_vec=True):
     return mrc_dest
 
 
-def rot_pos(vec, angle, inv=False):
-    r = R.from_euler("zyx", angle, degrees=True)
-    if inv:
-        r = r.inv()
-    rotated_vec = r.apply(vec)
-    return rotated_vec
-
-
 @numba.jit(nopython=True)
 def rot_pos_mtx(mtx, vec):
+    """Rotate a vector or matrix using a rotation matrix.
+
+    Args:
+        mtx (numpy.array): the rotation matrix
+        vec (numpy.array): the vector/matrix to be rotated
+
+    Returns:
+        ret (numpy.array): the rotated vector/matrix
+    """
     mtx = mtx.astype(np.float32)
     vec = vec.astype(np.float32)
-    return vec @ mtx
+
+    ret = vec @ mtx
+
+    return ret
 
 
 def rot_mrc(orig_mrc_data, orig_mrc_vec, angle):
+    """A function to rotation the density and vector array by a specified angle.
+
+    Args:
+        orig_mrc_data (numpy.array): the data array to be rotated
+        orig_mrc_vec (numpy.array): the vector array to be rotated
+        angle (float, float, float): the angle of rotation in degrees
+
+    Returns:
+        new_vec_array (numpy.array): rotated vector array
+        new_data_array (numpy.array): rotated data array
+    """
+
+    # set the dimension to be x dimension as all dimension are the same
     dim = orig_mrc_vec.shape[0]
 
+    # create array for the positions after rotation
     new_pos = np.array(np.meshgrid(np.arange(dim), np.arange(dim), np.arange(dim), )).T.reshape(-1, 3)
 
-    # set the center
+    # set the rotation center
     cent = 0.5 * float(dim)
 
-    # get relative positions from center
+    # get relative new positions from center
     new_pos = new_pos - cent
-    # print(new_pos)
 
-    # init the rotation by euler angle
+    # init the rotation matrix by euler angle
     r = R.from_euler("ZYX", angle, degrees=True)
     mtx = r.as_matrix()
     mtx[np.isclose(mtx, 0, atol=1e-15)] = 0
 
-    # print(mtx)
-
+    # reversely rotate the new position lists to get old positions
     old_pos = rot_pos_mtx(np.flip(mtx).T, new_pos) + cent
 
-    # print(old_pos)
-
+    # concatenate combine two position array horizontally for later filtering
     combined_arr = np.hstack((old_pos, new_pos))
 
     # filter values outside the boundaries
@@ -354,71 +363,49 @@ def rot_mrc(orig_mrc_data, orig_mrc_vec, angle):
             & (old_pos[:, 2] < dim)
     )
 
+    # get the mask of all the values inside boundary
     combined_arr = combined_arr[in_bound_mask]
 
-    # print(combined_arr)
-
-    # conversion indices to int
+    # convert the index to integer
     combined_arr = combined_arr.astype(np.int32)
 
-    # print(combined_arr.shape)
-
+    # get the old index array
     index_arr = combined_arr[:, 0:3]
 
-    # print(index_arr)
-    # print(np.count_nonzero(orig_mrc_data))
-
+    # get the index that has non-zero density by masking
     dens_mask = orig_mrc_data[index_arr[:, 0], index_arr[:, 1], index_arr[:, 2]] != 0.0
-
-    # print(dens_mask.shape)
-    # print(dens_mask)
-
     non_zero_rot_list = combined_arr[dens_mask]
 
-    # print(non_zero_rot_list.shape)
-    #     with np.printoptions(threshold=np.inf):
-    #         print(non_zero_rot_list[:, 0:3])
-
+    # get the non-zero vec and dens values
     non_zero_vec = orig_mrc_vec[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
-
     non_zero_dens = orig_mrc_data[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
-
-    # print(non_zero_dens)
-
-    # non_zero_dens[:, [2, 0]] = non_zero_dens[:, [0, 2]]
     new_vec = rot_pos_mtx(np.flip(mtx), non_zero_vec)
-
-    # print(new_vec)
 
     # init new vec and dens array
     new_vec_array = np.zeros_like(orig_mrc_vec)
     new_data_array = np.zeros_like(orig_mrc_data)
 
-    # print(new)
-
+    # find the new indices
     new_ind_arr = (non_zero_rot_list[:, 3:6] + cent).astype(int)
 
-    # fill in the new data
-    #     for vec, ind, dens in zip(new_vec, new_ind_arr, non_zero_dens):
-    #         new_vec_array[ind[0]][ind[1]][ind[2]] = vec
-    #         new_data_array[ind[0]][ind[1]][ind[2]] = dens
-
+    # fill in the values to new vec and dens array
     new_vec_array[new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]] = new_vec
     new_data_array[new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]] = non_zero_dens
 
     return new_vec_array, new_data_array
 
 
-def ang_to_mtx_ZYX(angle):
-    r = R.from_euler("ZYX", angle, degrees=True)
-    mtx = r.as_matrix()
-    mtx[np.isclose(mtx, 0, atol=1e-15)] = 0
-    # return np.flip(mtx).T
-    mtx = np.flip(mtx).T
-    return mtx.astype(np.float32)
-
-
 def find_best_trans_list(input_list):
+    """find the best translation based on list of FFT transformation results
+
+    Args:
+        input_list (numpy.array): FFT result list
+
+    Returns:
+        best (float): the maximum score found
+        trans (list(int)): the best translation associated with the maximum score
+    """
+
     sum_arr = np.zeros_like(input_list[0])
     for arr in input_list:
         sum_arr = sum_arr + arr
@@ -468,10 +455,26 @@ def find_best_trans_list_prob(input_list, alpha):
 
 
 def fft_search_score_trans(target_X, target_Y, target_Z, search_vec, a, b, c, fft_object, ifft_object):
+    """A function perform FFT transformation on the query density vectors and finds the best translation on 3D vectors.
+
+    Args:
+        target_X, target_Y, target_Z (numpy.array): FFT transformed result from target map for xyz axies
+        search_vec (numpy.array): the input query map vector array
+        a, b, c (numpy.array): empty n-bytes aligned arrays for holding intermediate values in the transformation
+        fft_object (pyfftw.FFTW): preset FFT transformation plan
+        ifft_object (pyfftw.FFTW): preset inverse FFT transformation plan
+
+    Returns:
+        best (float): the maximum score found
+        trans (list(int)): the best translation associated with the maximum score
+    """
+
+    # make copies of the original vector arrays
     x2 = copy.deepcopy(search_vec[..., 0])
     y2 = copy.deepcopy(search_vec[..., 1])
     z2 = copy.deepcopy(search_vec[..., 2])
 
+    # FFT tranformations and vector product
     X2 = np.zeros_like(target_X)
     np.copyto(a, x2)
     np.copyto(X2, fft_object(a))
@@ -496,28 +499,23 @@ def fft_search_score_trans(target_X, target_Y, target_Z, search_vec, a, b, c, ff
     dot_z = np.zeros_like(z2)
     np.copyto(dot_z, ifft_object(b))
 
-    #         if tuple(angle) == (0, 0, 30):
-    #             XX = [x12, y12, z12]
-
-    #         X2 = np.fft.rfftn(x2)
-    #         X12 = X1 * X2
-    #         x12 = np.fft.irfftn(X12, norm="forward")
-
-    # #         if (tuple(angle) == (0,0,30)):
-    # #             XX = [X12,x12]
-
-    #         Y2 = np.fft.rfftn(y2)
-    #         Y12 = Y1 * Y2
-    #         y12 = np.fft.irfftn(Y12, norm="forward")
-
-    #         Z2 = np.fft.rfftn(z2)
-    #         Z12 = Z1 * Z2
-    #         z12 = np.fft.irfftn(Z12, norm="forward")
-
     return find_best_trans_list([dot_x, dot_y, dot_z])
 
 
 def fft_search_best_dot(target_list, query_list, a, b, c, fft_object, ifft_object):
+    """A better version of the fft_search_score_trans function that finds the best dot product for the target and query list of vectors.
+
+    Args:
+        target_list (list(numpy.array)): FFT transformed result from target map (any dimensions)
+        query_list (list(numpy.array)): the input query map vector array (must has the same dimensions as target_list)
+        a, b, c (numpy.array): empty n-bytes aligned arrays for holding intermediate values in the transformation
+        fft_object (pyfftw.FFTW): preset FFT transformation plan
+        ifft_object (pyfftw.FFTW): preset inverse FFT transformation plan
+
+    Returns:
+        dot_product_list: (list(numpy.array)): vector product result that can be fed into find_best_trans_list() to find best translation
+    """
+
     dot_product_list = []
     for target_complex, query_real in zip(target_list, query_list):
         query_complex = np.zeros_like(target_complex)
@@ -533,7 +531,58 @@ def fft_search_best_dot(target_list, query_list, a, b, c, fft_object, ifft_objec
     return dot_product_list
 
 
+@numba.jit(nopython=True)
+def laplacian_filter(arr):
+    """A simple laplacian filter applied to an array with the kernel [[0, 1, 0], [1, -6, 1], [0, 1, 0]].
+
+    Args:
+        arr (numpy.array): the array to be filtered
+
+    Returns:
+        new_arr (numpy.array): the filtered array
+    """
+
+    xdim = arr.shape[0]
+    ydim = arr.shape[1]
+    zdim = arr.shape[2]
+    new_arr = np.zeros_like(arr)
+    for x in range(xdim):
+        for y in range(ydim):
+            for z in range(zdim):
+                if arr[x][y][z] > 0:
+                    new_arr[x][y][z] = -6.0 * arr[x][y][z]
+                    if (x + 1 < xdim):
+                        new_arr[x][y][z] += arr[x + 1][y][z]
+                    if (x - 1 >= 0):
+                        new_arr[x][y][z] += arr[x - 1][y][z]
+                    if (y + 1 < ydim):
+                        new_arr[x][y][z] += arr[x][y + 1][z]
+                    if (y - 1 >= 0):
+                        new_arr[x][y][z] += arr[x][y - 1][z]
+                    if (z + 1 < zdim):
+                        new_arr[x][y][z] += arr[x][y][z + 1]
+                    if (z - 1 >= 0):
+                        new_arr[x][y][z] += arr[x][y][z - 1]
+    return new_arr
+
+
 def fft_search_score_trans_1d(target_X, search_data, a, b, fft_object, ifft_object, mode, ave=None):
+    """1D version of fft_search_score_trans.
+
+    Args:
+        target_X (numpy.array): FFT transformed result from target map in 1D
+        search_data (numpy.array): the input query map array in 1D
+        a, b (numpy.array): empty n-bytes aligned arrays for holding intermediate values in the transformation
+        fft_object (pyfftw.FFTW): preset FFT transformation plan
+        ifft_object (pyfftw.FFTW): preset inverse FFT transformation plan
+        mode (string): special mode to use: Overlap, CC, PCC, Laplacian
+        ave (float, optional): placeholder for average value. Defaults to None.
+
+    Returns:
+        best (float): the maximum score found
+        trans (list(int)): the best translation associated with the maximum score
+    """
+
     x2 = copy.deepcopy(search_data)
 
     if mode == "Overlap":
@@ -543,15 +592,7 @@ def fft_search_score_trans_1d(target_X, search_data, a, b, fft_object, ifft_obje
     elif mode == "PCC":
         x2 = np.where(x2 > 0, x2 - ave, 0.0)
     elif mode == "Laplacian":
-        weights = np.array(
-            [
-                [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]],
-                [[0.0, 1.0, 0.0], [1.0, -6.0, 1.0], [0.0, 1.0, 0.0]],
-                [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]],
-            ]
-        )
-        x2 = convolve(search_data, weights, mode="constant")
-        # x2 = correlate(x2, weights, mode="constant")
+        x2 = laplacian_filter(x2)
 
     X2 = np.zeros_like(target_X)
     np.copyto(a, x2)
@@ -564,7 +605,24 @@ def fft_search_score_trans_1d(target_X, search_data, a, b, fft_object, ifft_obje
     return find_best_trans_list([dot_x])
 
 
-def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", is_eval_mode=False):
+def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", is_eval_mode=False, save_path="."):
+    """The main search function for fining the best superimposition for the target and the query map.
+
+    Args:
+        mrc_target (mrc_obj): the input target map
+        mrc_search (mrc_obj): the input query map
+        TopN (int, optional): the number of top superimposition to find. Defaults to 10.
+        ang (int, optional): search interval for angular rotation. Defaults to 30.
+        mode (str, optional): special modes to use. Defaults to "VecProduct".
+        is_eval_mode (bool, optional): set the evaluation mode true will only perform scoring but not searching. Defaults to False.
+        save_path (str, optional): the path to save output .pdb files. Defaults to the current directory.
+
+    Returns:
+        refined_list (list): a list of refined search results
+    """
+
+    time_start = time.time()
+
     if is_eval_mode:
         print("#For Evaluation Mode")
         print("#Please use the same coordinate system and map size for map1 and map2.")
@@ -575,11 +633,19 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
         print("#> vop #1 resample onGrid #0")
         print("#> volume #2 save new.mrc")
         print("#Chimera will generate the resampled map2.mrc as new.mrc")
-        return
 
-    #     x1 = copy.deepcopy(mrc_target.vec[:, :, :, 0])
-    #     y1 = copy.deepcopy(mrc_target.vec[:, :, :, 1])
-    #     z1 = copy.deepcopy(mrc_target.vec[:, :, :, 2])
+        _ = get_score(mrc_target.data,
+                      mrc_search.data,
+                      mrc_target.vec,
+                      mrc_search.vec,
+                      [0, 0, 0],
+                      mrc_target.ave,
+                      mrc_search.ave,
+                      mrc_target.std,
+                      mrc_search.std,
+                      mrc_target.std_norm_ave,
+                      mrc_search.std_norm_ave)
+        return None
 
     # init the target map vectors
     x1 = copy.deepcopy(mrc_target.vec[:, :, :, 0])
@@ -596,15 +662,7 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
     elif mode == "PCC":
         x1 = np.where(mrc_target.data > 0, mrc_target.data - mrc_target.ave, 0.0)
     elif mode == "Laplacian":
-        weights = np.array(
-            [
-                [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]],
-                [[0.0, 1.0, 0.0], [1.0, -6.0, 1.0], [0.0, 1.0, 0.0]],
-                [[0.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 0.0]],
-            ]
-        )
-        x1 = convolve(mrc_target.data, weights, mode="constant")
-        # x1 = correlate(mrc_target.data, weights, mode="constant")
+        x1 = laplacian_filter(mrc_target.data)
 
     d3 = mrc_target.xdim ** 3
 
@@ -636,7 +694,7 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
 
     angle_comb = np.array(np.meshgrid(x_angle, y_angle, z_angle)).T.reshape(-1, 3)
 
-    #     rot_vec_dict, rot_data_dict = rot_init_cuda(mrc_search.data, mrc_search.vec, angle_comb)
+    # rot_vec_dict, rot_data_dict = rot_init_cuda(mrc_search.data, mrc_search.vec, angle_comb)
 
     rot_vec_dict = {}
     rot_data_dict = {}
@@ -647,6 +705,10 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
             angle = trans_vec[future]
             rot_vec_dict[tuple(angle)] = future.result()[0]
             rot_data_dict[tuple(angle)] = future.result()[1]
+
+    time_rot = time.time()
+
+    print("Rotation time: " + str(time_rot - time_start))
 
     # fftw plans
     a = pyfftw.empty_aligned((x1.shape), dtype="float32")
@@ -699,6 +761,10 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
 
     for x in sorted_topN:
         print(x)
+
+    time_fft = time.time()
+
+    print("FFT time: " + str(time_fft - time_rot))
 
     refined_score = []
     if ang > 5.0:
@@ -757,16 +823,23 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
 
             refined_score.append([tuple(angle), best * rd3, trans, rot_mrc_vec, rot_mrc_data])
 
+        # sort the list to find the TopN with best scores
         refined_list = sorted(refined_score, key=lambda x: x[1], reverse=True)[:TopN]
 
     else:
+        # no action taken when refinement is disabled
         refined_list = sorted_topN
+
+    # calculate the refinement time
+    time_refine = time.time()
+    print("Refinement time: " + str(time_refine - time_fft))
 
     # Save the results to file
     for i, t_mrc in enumerate(refined_list):
         # calculate the scores
+        print()
         print("R=" + str(t_mrc[0]) + " T=" + str(t_mrc[2]))
-        sco = get_dot_score(
+        sco = get_score(
             mrc_target.data,
             t_mrc[4],
             mrc_target.vec,
@@ -781,7 +854,12 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
         )
 
         # Write result to PDB files
-        show_vec(mrc_target.orig, t_mrc[3], t_mrc[4], sco, mrc_search.xwidth, t_mrc[2], "model_" + str(i + 1) + ".pdb")
+        show_vec(mrc_target.orig, t_mrc[3], t_mrc[4], sco, mrc_search.xwidth, t_mrc[2],
+                 "model_top_" + str(i + 1) + ".pdb", save_path)
+
+    time_writefile = time.time()
+
+    print("File Write time: " + str(time_writefile - time_refine))
 
     return refined_list
 
@@ -824,10 +902,6 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, 
         print("#Chimera will generate the resampled map2.mrc as new.mrc")
         return
 
-    #     x1 = copy.deepcopy(mrc_target.vec[:, :, :, 0])
-    #     y1 = copy.deepcopy(mrc_target.vec[:, :, :, 1])
-    #     z1 = copy.deepcopy(mrc_target.vec[:, :, :, 2])
-
     # init the target map vectors
     # does this part need to be changed?
     x1 = copy.deepcopy(mrc_target.vec[:, :, :, 0])
@@ -839,9 +913,13 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, 
     y1 = copy.deepcopy(mrc_target.vec[:, :, :, 1])
     z1 = copy.deepcopy(mrc_target.vec[:, :, :, 2])
 
+    # Score normalization constant
+
     d3 = mrc_target.xdim ** 3
 
     rd3 = 1.0 / d3
+
+    # Calculate the FFT results for target map
 
     X1 = np.fft.rfftn(x1)
     X1 = np.conj(X1)
@@ -859,9 +937,15 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, 
     Z1 = np.fft.rfftn(z1)
     Z1 = np.conj(Z1)
 
+    # Compose target result list
+
     target_list = [X1, Y1, Z1, P1, P2, P3, P4]
 
+    # Calculate all the combination of angles
+
     angle_comb = calc_angle_comb(ang)
+
+    # Paralleled processing for rotation and FFT process per angle in angle_comb
 
     angle_score = []
 
@@ -877,11 +961,11 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, 
                             angle,
                             target_list,
                             alpha): angle for angle in angle_comb}
-        for future in concurrent.futures.as_completed(rets):
+        for future in tqdm(concurrent.futures.as_completed(rets), total=len(angle_comb)):
             angle = rets[future]
-            angle_score.append([tuple(angle), future.result()[0] * rd3, future.result()[1]])
+            angle_score.append([tuple(angle), future.result()[0] * rd3, future.result()[1], future.result()[2]])
 
-    # calculate the ave and std
+    # calculate the ave and std for all the rotations
     score_arr = np.array([row[1] for row in angle_score])
     ave = np.mean(score_arr)
     std = np.std(score_arr)
@@ -896,6 +980,8 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, 
 
     refined_score = []
     if ang > 5.0:
+        # Search for +5.0 and -5.0 degree rotation.
+
         for t_mrc in sorted_topN:
             ang_list = np.array(
                 np.meshgrid(
@@ -904,16 +990,12 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, 
                     [t_mrc[0][2] - 5, t_mrc[0][2], t_mrc[0][2] + 5],
                 )
             ).T.reshape(-1, 3)
-            # print(ang_list)
+
             for ang in ang_list:
                 rotated = rot_mrc_prob(mrc_search.data, mrc_search.vec, mrc_search_p1.data, mrc_search_p2.data,
                                        mrc_search_p3.data, mrc_search_p4.data, ang)
                 rotated_vec = rotated[0]
                 rotated_data = rotated[1]
-                rotated_data_p1 = rotated[2]
-                rotated_data_p2 = rotated[3]
-                rotated_data_p3 = rotated[4]
-                rotated_data_p4 = rotated[5]
 
                 x2 = copy.deepcopy(rotated_vec[..., 0])
                 y2 = copy.deepcopy(rotated_vec[..., 1])
@@ -1276,6 +1358,8 @@ def get_score(
 
 
 def calc_angle_comb(ang_interval):
+    """ Calculate the all the possible combination of angles given the interval in degrees"""
+
     x_angle = []
     y_angle = []
     z_angle = []
@@ -1296,18 +1380,38 @@ def calc_angle_comb(ang_interval):
 
 
 def rot_and_search_fft(data, vec, dp1, dp2, dp3, dp4, angle, target_list, alpha):
+    """ Calculate the best translation for the query map given a rotation angle
+
+    Args:
+        data (numpy.array): The data of query map
+        vec (numpy.array): The vector representation of query map
+        dp1-dp4 (numpy.array): The probability representation of query map
+        angle (list/tuple): The rotation angle
+        target_list (numpy.array) : A list of FFT-transformed results of the target map
+        alpha (float): Parameter for alpha mixing during dot score calculation
+
+    Returns:
+        best (float): Best score calculated using FFT
+        trans (list): Best translation in [x,y,z]
+    """
+
+    # Rotate the query map and vector representation
     new_vec_array, new_data_array, new_data_array_p1, new_data_array_p2, new_data_array_p3, new_data_array_p4 = rot_mrc_prob(
         data, vec, dp1, dp2, dp3, dp4, angle)
+
+    # Compose the query FFT list
 
     x2 = copy.deepcopy(new_vec_array[..., 0])
     y2 = copy.deepcopy(new_vec_array[..., 1])
     z2 = copy.deepcopy(new_vec_array[..., 2])
-    p21 = copy.deepcopy(new_data_array)
-    p22 = copy.deepcopy(new_data_array)
-    p23 = copy.deepcopy(new_data_array)
-    p24 = copy.deepcopy(new_data_array)
+    p21 = copy.deepcopy(new_data_array_p1)
+    p22 = copy.deepcopy(new_data_array_p2)
+    p23 = copy.deepcopy(new_data_array_p3)
+    p24 = copy.deepcopy(new_data_array_p4)
 
-    # fftw plans
+    query_list = [x2, y2, z2, p21, p22, p23, p24]
+
+    # fftw plans initialization
     a = pyfftw.empty_aligned((x2.shape), dtype="float32")
     b = pyfftw.empty_aligned((a.shape[0], a.shape[1], a.shape[2] // 2 + 1), dtype="complex64")
     c = pyfftw.empty_aligned((x2.shape), dtype="float32")
@@ -1315,10 +1419,9 @@ def rot_and_search_fft(data, vec, dp1, dp2, dp3, dp4, angle, target_list, alpha)
     fft_object = pyfftw.FFTW(a, b, axes=(0, 1, 2))
     ifft_object = pyfftw.FFTW(b, c, direction="FFTW_BACKWARD", axes=(0, 1, 2), normalise_idft=False)
 
-    query_list = [x2, y2, z2, p21, p22, p23, p24]
-
+    # Search for best translation using FFT
     fft_result_list = fft_search_best_dot(target_list, query_list, a, b, c, fft_object, ifft_object)
 
     best, trans, best_prob = find_best_trans_list_prob(fft_result_list, alpha)
 
-    return best, trans
+    return best, trans, best_prob
