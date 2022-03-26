@@ -322,6 +322,7 @@ def calc(stp, endp, pos, mrc1_data, fsiv):
 
 
 def fastVEC(mrc_source, mrc_dest, dreso=16.0):
+
     print("#Start VEC")
     gstep = mrc_source.xwidth
     fs = (dreso / gstep) * 0.5
@@ -410,8 +411,8 @@ def fastVEC(mrc_source, mrc_dest, dreso=16.0):
     mrc_dest.dsum = dsum
     mrc_dest.Nact = Nact
     mrc_dest.ave = dsum / float(Nact)
-    mrc_dest.std = np.linalg.norm(mrc_dest.dens[mrc_dest.dens > 0])
-    mrc_dest.std_norm_ave = np.linalg.norm(mrc_dest.dens[mrc_dest.dens > 0] - mrc_dest.ave)
+    mrc_dest.std = np.linalg.norm(mrc_dest.data[mrc_dest.data > 0])
+    mrc_dest.std_norm_ave = np.linalg.norm(mrc_dest.data[mrc_dest.data > 0] - mrc_dest.ave)
 
     print("#MAP AVE={ave} STD={std} STD_norm={std_norm}".format(ave=mrc_dest.ave, std=mrc_dest.std,
                                                                 std_norm=mrc_dest.std_norm_ave))
