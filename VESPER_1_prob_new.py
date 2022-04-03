@@ -8,6 +8,8 @@ import numpy as np
 import os
 import pyfftw
 import time
+from datetime import datetime
+from pathlib import Path
 from scipy import ndimage
 from scipy.spatial.transform import Rotation as R
 from tqdm import tqdm
@@ -322,7 +324,6 @@ def calc(stp, endp, pos, mrc1_data, fsiv):
 
 
 def fastVEC(mrc_source, mrc_dest, dreso=16.0):
-
     print("#Start VEC")
     gstep = mrc_source.xwidth
     fs = (dreso / gstep) * 0.5
@@ -331,9 +332,6 @@ def fastVEC(mrc_source, mrc_dest, dreso=16.0):
     fmaxd = (dreso / gstep) * 2.0
     print("#maxd= {fmaxd}".format(fmaxd=fmaxd))
     print("#fsiv= " + str(fsiv))
-
-    dsum = 0.0
-    Nact = 0
 
     for x in tqdm(range(mrc_dest.xdim)):
         for y in range(mrc_dest.ydim):
@@ -401,22 +399,20 @@ def fastVEC(mrc_source, mrc_dest, dreso=16.0):
 
                 mrc_dest.vec[x][y][z] = tmpcd * rdvec
 
-                dsum += dtotal
-                Nact += 1
-
     print("#End LDP")
-    print(dsum)
-    print(Nact)
 
-    mrc_dest.dsum = dsum
-    mrc_dest.Nact = Nact
-    mrc_dest.ave = dsum / float(Nact)
+    mrc_dest.dsum = np.sum(mrc_dest.data)
+    mrc_dest.Nact = np.count_nonzero(mrc_dest.data)
+    mrc_dest.ave = np.mean(mrc_dest.data[mrc_dest.data > 0])
     mrc_dest.std = np.linalg.norm(mrc_dest.data[mrc_dest.data > 0])
     mrc_dest.std_norm_ave = np.linalg.norm(mrc_dest.data[mrc_dest.data > 0] - mrc_dest.ave)
 
-    print("#MAP AVE={ave} STD={std} STD_norm={std_norm}".format(ave=mrc_dest.ave, std=mrc_dest.std,
-                                                                std_norm=mrc_dest.std_norm_ave))
-    # return False
+    print("#MAP SUM={sum} COUNT={cnt} AVE={ave} STD={std} STD_norm={std_norm}".format(sum=mrc_dest.dsum,
+                                                                                      cnt=mrc_dest.Nact,
+                                                                                      ave=mrc_dest.ave,
+                                                                                      std=mrc_dest.std,
+                                                                                      std_norm=mrc_dest.std_norm_ave))
+
     return mrc_dest
 
 
@@ -596,7 +592,7 @@ def fft_search_score_trans(target_X, target_Y, target_Z, search_vec, a, b, c, ff
     y2 = copy.deepcopy(search_vec[..., 1])
     z2 = copy.deepcopy(search_vec[..., 2])
 
-    # FFT tranformations and vector product
+    # FFT transformations and vector product
     X2 = np.zeros_like(target_X)
     np.copyto(a, x2)
     np.copyto(X2, fft_object(a))
@@ -756,17 +752,8 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
         print("#> volume #2 save new.mrc")
         print("#Chimera will generate the resampled map2.mrc as new.mrc")
 
-        _ = get_score(mrc_target.data,
-                      mrc_search.data,
-                      mrc_target.vec,
-                      mrc_search.vec,
-                      [0, 0, 0],
-                      mrc_target.ave,
-                      mrc_search.ave,
-                      mrc_target.std,
-                      mrc_search.std,
-                      mrc_target.std_norm_ave,
-                      mrc_search.std_norm_ave)
+        _ = get_score(mrc_target, mrc_search.data, mrc_search.vec, [0, 0, 0])
+
         return None
 
     # init the target map vectors
@@ -943,10 +930,14 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
                     rstd3 = 1.0 / mrc_target.std_norm_ave ** 2
                     best = best * rstd3
 
-            refined_score.append([tuple(angle), best * rd3, trans, rot_mrc_vec, rot_mrc_data])
+            refined_score.append({"angle": tuple(angle),
+                                  "vec_score": best * rd3,
+                                  "vec_trans": trans,
+                                  "vec": rot_mrc_vec,
+                                  "data": rot_mrc_data})
 
         # sort the list to find the TopN with best scores
-        refined_list = sorted(refined_score, key=lambda x: x[1], reverse=True)[:TopN]
+        refined_list = sorted(refined_score, key=lambda x: x["vec_score"], reverse=True)[:TopN]
 
     else:
         # no action taken when refinement is disabled
@@ -956,28 +947,28 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
     time_refine = time.time()
     print("Refinement time: " + str(time_refine - time_fft))
 
-    # Save the results to file
-    for i, t_mrc in enumerate(refined_list):
-        # calculate the scores
-        print()
-        print("R=" + str(t_mrc[0]) + " T=" + str(t_mrc[2]))
-        sco = get_score(
-            mrc_target.data,
-            t_mrc[4],
-            mrc_target.vec,
-            t_mrc[3],
-            t_mrc[2],
-            mrc_target.ave,
-            mrc_search.ave,
-            mrc_target.std,
-            mrc_search.std,
-            mrc_target.std_norm_ave,
-            mrc_search.std_norm_ave,
+    # Write result to PDB files
+    folder_path = Path.cwd() / ("VESPER_RUN_" + datetime.now().strftime('%m%d_%H%M'))
+    Path.mkdir(folder_path)
+
+    for i, result_mrc in enumerate(refined_list):
+        print("Rotation=", str(result_mrc["angle"]), "Translation=", str(result_mrc["vec_trans"]))
+        sco_arr = get_score(
+            mrc_target,
+            result_mrc["data"],
+            result_mrc["vec"],
+            result_mrc["vec_trans"]
         )
 
-        # Write result to PDB files
-        show_vec(mrc_target.orig, t_mrc[3], t_mrc[4], sco, mrc_search.xwidth, t_mrc[2],
-                 "model_top_" + str(i + 1) + ".pdb", save_path)
+        show_vec(mrc_target.orig,
+                 result_mrc["vec"],
+                 result_mrc["data"],
+                 sco_arr,
+                 mrc_search.xwidth,
+                 result_mrc["vec_trans"],
+                 result_mrc["angle"],
+                 folder_path,
+                 i + 1)
 
     time_writefile = time.time()
 
@@ -1037,9 +1028,7 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, 
 
     # Score normalization constant
 
-    d3 = mrc_target.xdim ** 3
-
-    rd3 = 1.0 / d3
+    rd3 = 1.0 / (mrc_target.xdim ** 3)
 
     # Calculate the FFT results for target map
 
@@ -1085,20 +1074,25 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, 
                             alpha): angle for angle in angle_comb}
         for future in tqdm(concurrent.futures.as_completed(rets), total=len(angle_comb)):
             angle = rets[future]
-            angle_score.append([tuple(angle), future.result()[0] * rd3, future.result()[1], future.result()[2]])
+            angle_score.append([tuple(angle),
+                                future.result()[0] * rd3,
+                                future.result()[1],
+                                future.result()[2] * rd3,
+                                future.result()[3]])
 
     # calculate the ave and std for all the rotations
-    score_arr = np.array([row[1] for row in angle_score])
-    ave = np.mean(score_arr)
-    std = np.std(score_arr)
-    print("Std= " + str(std) + " Ave= " + str(ave))
+    score_arr_vec = np.array([row[1] for row in angle_score])
+    score_arr_prob = np.array([row[3] for row in angle_score])
+
+    print("DotScore Std=", str(np.std(score_arr_vec)), "DotScore Ave=", str(np.mean(score_arr_vec)))
+    print("ProbScore Std=", str(np.std(score_arr_prob)), "ProbScore Ave=", str(np.mean(score_arr_prob)))
 
     # sort the list and get topN
     sorted_topN = sorted(angle_score, key=lambda x: x[1], reverse=True)[:TopN]
 
     # print TopN Statistics
-    for x in sorted_topN:
-        print(x)
+    for idx, x in enumerate(sorted_topN):
+        print("#", str(idx + 1), x)
 
     refined_score = []
     if ang > 5.0:
@@ -1116,19 +1110,22 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, 
             for ang in ang_list:
                 rotated = rot_mrc_prob(mrc_search.data, mrc_search.vec, mrc_search_p1.data, mrc_search_p2.data,
                                        mrc_search_p3.data, mrc_search_p4.data, ang)
+
                 rotated_vec = rotated[0]
                 rotated_data = rotated[1]
 
                 x2 = copy.deepcopy(rotated_vec[..., 0])
                 y2 = copy.deepcopy(rotated_vec[..., 1])
                 z2 = copy.deepcopy(rotated_vec[..., 2])
+
                 p21 = copy.deepcopy(rotated[2])
                 p22 = copy.deepcopy(rotated[3])
                 p23 = copy.deepcopy(rotated[4])
                 p24 = copy.deepcopy(rotated[5])
 
                 target_list = [X1, Y1, Z1, P1, P2, P3, P4]
-                query_list = [x2, y2, z2, p21, p22, p23, p24]
+                query_list_vec = [x2, y2, z2]
+                query_list_prob = [p21, p22, p23, p24]
 
                 # fftw plans
                 a = pyfftw.empty_aligned((x2.shape), dtype="float32")
@@ -1138,42 +1135,79 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, 
                 fft_object = pyfftw.FFTW(a, b, axes=(0, 1, 2))
                 ifft_object = pyfftw.FFTW(b, c, direction="FFTW_BACKWARD", axes=(0, 1, 2), normalise_idft=False)
 
-                fft_result_list = fft_search_best_dot(target_list, query_list, a, b, c, fft_object, ifft_object)
+                # Search for best translation using FFT
+                fft_result_list_vec = fft_search_best_dot(target_list[:3], query_list_vec, a, b, c, fft_object,
+                                                          ifft_object)
+                fft_result_list_prob = fft_search_best_dot(target_list[4:], query_list_prob, a, b, c, fft_object,
+                                                           ifft_object)
 
-                best, trans, best_prob = find_best_trans_list_prob(fft_result_list, alpha)
+                vec_score, vec_trans = find_best_trans_list(fft_result_list_vec)
+                prob_score, prob_trans = find_best_trans_list(fft_result_list_prob)
 
-                refined_score.append([tuple(ang), best * rd3, trans, rotated_vec, rotated_data, best_prob * rd3])
+                refined_score.append(
+                    {"angle": tuple(ang),
+                     "vec_score": vec_score * rd3,
+                     "vec_trans": vec_trans,
+                     "vec": rotated_vec,
+                     "data": rotated_data,
+                     "prob_score": prob_score * rd3,
+                     "prob_trans": prob_trans})
 
-        refined_list = sorted(refined_score, key=lambda x: x[1], reverse=True)[:TopN]
+        refined_list = sorted(refined_score, key=lambda x: x["vec_score"], reverse=True)[:TopN]  # Sort by dot score
     else:
         refined_list = sorted_topN
 
-    for i, t_mrc in enumerate(refined_list):
-        print("R=" + str(t_mrc[0]) + " T=" + str(t_mrc[2]))
-        sco = get_score(
-            mrc_target.data,
-            t_mrc[4],
-            mrc_target.vec,
-            t_mrc[3],
-            t_mrc[2],
-            mrc_target.ave,
-            mrc_search.ave,
-            mrc_target.std,
-            mrc_search.std,
-            mrc_target.std_norm_ave,
-            mrc_search.std_norm_ave,
-            sco_prob_added=t_mrc[1],
-            sco_prob_only=t_mrc[5],
+    # Write result to PDB files
+    folder_path = Path.cwd() / ("VESPER_RUN_" + datetime.now().strftime('%m%d_%H%M'))
+    Path.mkdir(folder_path)
+
+    for i, result_mrc in enumerate(refined_list):
+        print("Rotation=", str(result_mrc["angle"]), "Translation=", str(result_mrc["vec_trans"]))
+        sco_arr = get_score(
+            mrc_target,
+            result_mrc["data"],
+            result_mrc["vec"],
+            result_mrc["vec_trans"]
         )
 
-        # Write result to PDB files
-        show_vec(mrc_target.orig, t_mrc[3], t_mrc[4], sco, mrc_search.xwidth, t_mrc[2], "model_" + str(i + 1) + ".pdb")
+        show_vec(mrc_target.orig,
+                 result_mrc["vec"],
+                 result_mrc["data"],
+                 sco_arr,
+                 result_mrc["vec_score"],
+                 mrc_search.xwidth,
+                 result_mrc["vec_trans"],
+                 result_mrc["angle"],
+                 folder_path,
+                 i + 1)
 
     return refined_list
 
 
-def show_vec(origin, sampled_mrc_vec, sampled_mrc_data, sampled_mrc_score, sample_width, trans, name):
+def show_vec(origin,
+             sampled_mrc_vec,
+             sampled_mrc_data,
+             score_arr,
+             score,
+             sample_width,
+             trans,
+             angle,
+             folder_path,
+             rank):
     dim = sampled_mrc_data.shape[0]
+
+    filename = "R_{:02d}-S_{:>7.3f}.pdb".format(rank, score).replace(" ", "_")
+    # filename = "M_{:02d}-S_{:>7.3f}-A_{:>5.1f}_{:>5.1f}_{:>5.1f}-T_{:>3.0f}_{:>3.0f}_{:>3.0f}.pdb".format(
+    #     rank,
+    #     score,
+    #     angle[0],
+    #     angle[1],
+    #     angle[2],
+    #     trans[0],
+    #     trans[1],
+    #     trans[2]).replace(" ", "_")
+
+    filepath = folder_path / filename
 
     origin = np.array([origin[0], origin[1], origin[2]])
     trans = np.array(trans)
@@ -1190,7 +1224,7 @@ def show_vec(origin, sampled_mrc_vec, sampled_mrc_data, sampled_mrc_score, sampl
     natm = 1
     nres = 1
 
-    pdb_file = open(name, "w")
+    pdb_file = open(filepath, "w")
     for x in range(dim):
         for y in range(dim):
             for z in range(dim):
@@ -1200,7 +1234,7 @@ def show_vec(origin, sampled_mrc_vec, sampled_mrc_data, sampled_mrc_score, sampl
                     tmp = tmp * sample_width + add
                     atom_header = "ATOM{:>7d}  CA  ALA{:>6d}    ".format(natm, nres)
                     atom_content = "{:8.3f}{:8.3f}{:8.3f}{:6.2f}{:6.2f}".format(
-                        tmp[0], tmp[1], tmp[2], 1.0, sampled_mrc_score[x][y][z]
+                        tmp[0], tmp[1], tmp[2], 1.0, score_arr[x][y][z]
                     )
                     pdb_file.write(atom_header + atom_content + "\n")
                     natm += 1
@@ -1209,7 +1243,7 @@ def show_vec(origin, sampled_mrc_vec, sampled_mrc_data, sampled_mrc_score, sampl
                     tmp = (tmp + sampled_mrc_vec[x][y][z]) * sample_width + add
                     atom_header = "ATOM{:>7d}  CB  ALA{:>6d}    ".format(natm, nres)
                     atom_content = "{:8.3f}{:8.3f}{:8.3f}{:6.2f}{:6.2f}".format(
-                        tmp[0], tmp[1], tmp[2], 1.0, sampled_mrc_score[x][y][z]
+                        tmp[0], tmp[1], tmp[2], 1.0, score_arr[x][y][z]
                     )
                     pdb_file.write(atom_header + atom_content + "\n")
                     natm += 1
@@ -1308,93 +1342,24 @@ def rot_mrc_prob(orig_mrc_data, orig_mrc_vec, mrc_search_p1_data, mrc_search_p2_
     return new_vec_array, new_data_array, new_data_array_p1, new_data_array_p2, new_data_array_p3, new_data_array_p4
 
 
-def get_dot_score(
-        target_map_data, search_map_data, target_map_vec, search_map_vec, trans, ave1, ave2, std1, std2, pstd1, pstd2
-):
-    px, py, pz = 0, 0, 0
-    dim = target_map_data.shape[0]
-    total = 0
-
-    t = np.array(trans)
-    if trans[0] > 0.5 * dim:
-        t[0] -= dim
-    if trans[1] > 0.5 * dim:
-        t[1] -= dim
-    if trans[2] > 0.5 * dim:
-        t[2] -= dim
-
-    target_pos = np.array(np.meshgrid(np.arange(dim), np.arange(dim), np.arange(dim), )).T.reshape(-1, 3)
-
-    search_pos = target_pos + t
-
-    total += np.count_nonzero(target_map_data[target_pos[:, 0], target_pos[:, 1], target_pos[:, 2]])
-
-    combined_arr = np.hstack((target_pos, search_pos))
-
-    combined_arr = combined_arr[
-        (combined_arr[:, 3] >= 0)
-        & (combined_arr[:, 4] >= 0)
-        & (combined_arr[:, 5] >= 0)
-        & (combined_arr[:, 3] < dim)
-        & (combined_arr[:, 4] < dim)
-        & (combined_arr[:, 5] < dim)
-        ]
-
-    target_pos = combined_arr[:, 0:3]
-    search_pos = combined_arr[:, 3:6]
-
-    d1 = target_map_data[target_pos[:, 0], target_pos[:, 1], target_pos[:, 2]]
-    d2 = search_map_data[search_pos[:, 0], search_pos[:, 1], search_pos[:, 2]]
-
-    d1 = np.where(d1 <= 0, 0.0, d1)
-    d2 = np.where(d2 <= 0, 0.0, d1)
-
-    print(np.sum(d1))
-    print(np.sum(d2))
-
-    pd1 = np.where(d1 <= 0, 0.0, d1 - ave1)
-    pd2 = np.where(d2 <= 0, 0.0, d2 - ave2)
-
-    cc = np.sum(np.multiply(d1, d2))
-    pcc = np.sum(np.multiply(pd1, pd2))
-
-    target_zero_mask = target_map_data[target_pos[:, 0], target_pos[:, 1], target_pos[:, 2]] == 0
-    target_non_zero_mask = target_map_data[target_pos[:, 0], target_pos[:, 1], target_pos[:, 2]] > 0
-    search_non_zero_mask = search_map_data[search_pos[:, 0], search_pos[:, 1], search_pos[:, 2]] > 0
-    search_non_zero_count = np.count_nonzero(np.multiply(target_zero_mask, search_non_zero_mask))
-
-    trimmed_target_vec = target_map_vec[target_pos[:, 0], target_pos[:, 1], target_pos[:, 2]]
-    trimmed_search_vec = search_map_vec[search_pos[:, 0], search_pos[:, 1], search_pos[:, 2]]
-
-    total += search_non_zero_count
-
-    sco_arr = np.zeros_like(search_map_data)
-    sco = np.einsum("ij,ij->i", trimmed_target_vec, trimmed_search_vec)
-    sco_arr[search_pos[:, 0], search_pos[:, 1], search_pos[:, 2]] = sco
-    sco_sum = np.sum(sco_arr)
-    Nm = np.count_nonzero(np.multiply(target_non_zero_mask, search_non_zero_mask))
-
-    print(
-        "Overlap= "
-        + str(float(Nm) / float(total))
-        + " "
-        + str(Nm)
-        + "/"
-        + str(total)
-        + " CC= "
-        + str(cc / (std1 * std2))
-        + " PCC= "
-        + str(pcc / (pstd1 * pstd2))
-    )
-    print("Score=", sco_sum)
-    return sco_arr
-
-
 def get_score(
-        target_map_data, search_map_data, target_map_vec, search_map_vec, trans, ave1, ave2, std1, std2, pstd1, pstd2,
-        sco_prob_added, sco_prob_only
+        target_map,
+        search_map_data,
+        search_map_vec,
+        trans
 ):
-    px, py, pz = 0, 0, 0
+    target_map_data = target_map.data
+    target_map_vec = target_map.vec
+
+    ave1 = target_map.ave
+    ave2 = np.mean(search_map_data[search_map_data > 0])
+
+    std1 = target_map.std
+    std2 = np.linalg.norm(search_map_data[search_map_data > 0])
+
+    pstd1 = target_map.std_norm_ave
+    pstd2 = np.linalg.norm(search_map_data[search_map_data > 0] - ave2)
+
     dim = target_map_data.shape[0]
     total = 0
 
@@ -1460,22 +1425,17 @@ def get_score(
     Nm = np.count_nonzero(np.multiply(target_non_zero_mask, search_non_zero_mask))
 
     print(
-        "Overlap= "
+        "Overlap="
         + str(float(Nm) / float(total))
         + " "
-        + str(Nm)
-        + "/"
-        + str(total)
-        + " CC= "
+        + str(Nm) + "/" + str(total)
+        + " CC="
         + str(cc / (std1 * std2))
-        + " PCC= "
+        + " PCC="
         + str(pcc / (pstd1 * pstd2))
-        + " Scoreplusprob= "
-        + str(sco_prob_added)
-        + " Scoreprobonly= "
-        + str(sco_prob_only)
     )
-    print("Score= ", sco_sum)
+
+    print("Score=", sco_sum)
     return sco_arr
 
 
@@ -1513,8 +1473,10 @@ def rot_and_search_fft(data, vec, dp1, dp2, dp3, dp4, angle, target_list, alpha)
         alpha (float): Parameter for alpha mixing during dot score calculation
 
     Returns:
-        best (float): Best score calculated using FFT
-        trans (list): Best translation in [x,y,z]
+        vec_score (float): Best vector dot product score calculated using FFT
+        vec_trans (list): Best translation in [x,y,z] with vec_score
+        prob_score (float): Best probability score calculated using FFT
+        prob_trans (list): Best translation in [x,y,z] with prob_score
     """
 
     # Rotate the query map and vector representation
@@ -1526,12 +1488,14 @@ def rot_and_search_fft(data, vec, dp1, dp2, dp3, dp4, angle, target_list, alpha)
     x2 = copy.deepcopy(new_vec_array[..., 0])
     y2 = copy.deepcopy(new_vec_array[..., 1])
     z2 = copy.deepcopy(new_vec_array[..., 2])
+
     p21 = copy.deepcopy(new_data_array_p1)
     p22 = copy.deepcopy(new_data_array_p2)
     p23 = copy.deepcopy(new_data_array_p3)
     p24 = copy.deepcopy(new_data_array_p4)
 
-    query_list = [x2, y2, z2, p21, p22, p23, p24]
+    query_list_vec = [x2, y2, z2]
+    query_list_prob = [p21, p22, p23, p24]
 
     # fftw plans initialization
     a = pyfftw.empty_aligned((x2.shape), dtype="float32")
@@ -1542,8 +1506,10 @@ def rot_and_search_fft(data, vec, dp1, dp2, dp3, dp4, angle, target_list, alpha)
     ifft_object = pyfftw.FFTW(b, c, direction="FFTW_BACKWARD", axes=(0, 1, 2), normalise_idft=False)
 
     # Search for best translation using FFT
-    fft_result_list = fft_search_best_dot(target_list, query_list, a, b, c, fft_object, ifft_object)
+    fft_result_list_vec = fft_search_best_dot(target_list[:3], query_list_vec, a, b, c, fft_object, ifft_object)
+    fft_result_list_prob = fft_search_best_dot(target_list[4:], query_list_prob, a, b, c, fft_object, ifft_object)
 
-    best, trans, best_prob = find_best_trans_list_prob(fft_result_list, alpha)
+    vec_score, vec_trans = find_best_trans_list(fft_result_list_vec)
+    prob_score, prob_trans = find_best_trans_list(fft_result_list_prob)
 
-    return best, trans, best_prob
+    return vec_score, vec_trans, prob_score, prob_trans

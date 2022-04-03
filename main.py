@@ -218,6 +218,7 @@ if __name__ == "__main__":
 
         mrc1, mrc_N1 = mrc_set_vox_size(mrc1, threshold1, voxel_spacing)
         mrc2, mrc_N2 = mrc_set_vox_size(mrc2, threshold2, voxel_spacing)
+
         mrc1_p1, mrc_N1_p1 = mrc_set_vox_size(mrc1_p1, th=0.0, voxel_size=voxel_spacing)
         mrc1_p2, mrc_N1_p2 = mrc_set_vox_size(mrc1_p2, th=0.0, voxel_size=voxel_spacing)
         mrc1_p3, mrc_N1_p3 = mrc_set_vox_size(mrc1_p3, th=0.0, voxel_size=voxel_spacing)
