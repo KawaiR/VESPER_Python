@@ -87,6 +87,7 @@ def mrc_set_vox_size(mrc, th=0.00, voxel_size=7.0):
     d2_list = np.linalg.norm(non_zero_index_list - cent_arr, axis=1)
     dmax = max(d2_list)
 
+    print()
     print("#dmax=" + str(dmax / mrc.xwidth))
     dmax = dmax * mrc.xwidth
 
@@ -324,16 +325,15 @@ def calc(stp, endp, pos, mrc1_data, fsiv):
 
 
 def fastVEC(mrc_source, mrc_dest, dreso=16.0):
-    print("#Start VEC")
     gstep = mrc_source.xwidth
     fs = (dreso / gstep) * 0.5
     fs = fs ** 2
     fsiv = 1.0 / fs
     fmaxd = (dreso / gstep) * 2.0
-    print("#maxd= {fmaxd}".format(fmaxd=fmaxd))
-    print("#fsiv= " + str(fsiv))
 
-    for x in tqdm(range(mrc_dest.xdim)):
+    # print("#maxd={fmaxd}".format(fmaxd=fmaxd), "#fsiv=" + str(fsiv))
+
+    for x in range(mrc_dest.xdim):
         for y in range(mrc_dest.ydim):
             for z in range(mrc_dest.zdim):
 
@@ -398,8 +398,6 @@ def fastVEC(mrc_source, mrc_dest, dreso=16.0):
                 rdvec = 1.0 / dvec
 
                 mrc_dest.vec[x][y][z] = tmpcd * rdvec
-
-    print("#End LDP")
 
     mrc_dest.dsum = np.sum(mrc_dest.data)
     mrc_dest.Nact = np.count_nonzero(mrc_dest.data)
@@ -621,7 +619,8 @@ def fft_search_score_trans(target_X, target_Y, target_Z, search_vec, a, b, c, ff
 
 
 def fft_search_best_dot(target_list, query_list, a, b, c, fft_object, ifft_object):
-    """A better version of the fft_search_score_trans function that finds the best dot product for the target and query list of vectors.
+    """A better version of the fft_search_score_trans function that finds the best dot product for the target and
+    query list of vectors.
 
     Args:
         target_list (list(numpy.array)): FFT transformed result from target map (any dimensions)
@@ -630,8 +629,8 @@ def fft_search_best_dot(target_list, query_list, a, b, c, fft_object, ifft_objec
         fft_object (pyfftw.FFTW): preset FFT transformation plan
         ifft_object (pyfftw.FFTW): preset inverse FFT transformation plan
 
-    Returns:
-        dot_product_list: (list(numpy.array)): vector product result that can be fed into find_best_trans_list() to find best translation
+    Returns: dot_product_list: (list(numpy.array)): vector product result that can be fed into find_best_trans_list()
+    to find best translation
     """
 
     dot_product_list = []
@@ -1018,13 +1017,13 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, 
     # init the target map vectors
     # does this part need to be changed?
     x1 = copy.deepcopy(mrc_target.vec[:, :, :, 0])
+    y1 = copy.deepcopy(mrc_target.vec[:, :, :, 1])
+    z1 = copy.deepcopy(mrc_target.vec[:, :, :, 2])
+
     p1 = copy.deepcopy(mrc_P1.data)
     p2 = copy.deepcopy(mrc_P2.data)
     p3 = copy.deepcopy(mrc_P3.data)
     p4 = copy.deepcopy(mrc_P4.data)
-
-    y1 = copy.deepcopy(mrc_target.vec[:, :, :, 1])
-    z1 = copy.deepcopy(mrc_target.vec[:, :, :, 2])
 
     # Score normalization constant
 
@@ -1058,6 +1057,9 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, 
 
     # Paralleled processing for rotation and FFT process per angle in angle_comb
 
+    print()
+    print("###Start Searching###")
+
     angle_score = []
 
     with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count() - 1) as executor:
@@ -1084,6 +1086,7 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, 
     score_arr_vec = np.array([row[1] for row in angle_score])
     score_arr_prob = np.array([row[3] for row in angle_score])
 
+    print()
     print("DotScore Std=", str(np.std(score_arr_vec)), "DotScore Ave=", str(np.mean(score_arr_vec)))
     print("ProbScore Std=", str(np.std(score_arr_prob)), "ProbScore Ave=", str(np.mean(score_arr_prob)))
 
@@ -1097,6 +1100,7 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, 
     refined_score = []
     if ang > 5.0:
         # Search for +5.0 and -5.0 degree rotation.
+        print("\n###Start Refining###")
 
         for t_mrc in sorted_topN:
             ang_list = np.array(
@@ -1161,7 +1165,10 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, 
     folder_path = Path.cwd() / ("VESPER_RUN_" + datetime.now().strftime('%m%d_%H%M'))
     Path.mkdir(folder_path)
 
+    print("###Writing results to PDB files###")
+
     for i, result_mrc in enumerate(refined_list):
+        print("\nMODEL # " + str(i + 1))
         print("Rotation=", str(result_mrc["angle"]), "Translation=", str(result_mrc["vec_trans"]))
         sco_arr = get_score(
             mrc_target,
@@ -1399,9 +1406,6 @@ def get_score(
     d1 = np.where(d1 <= 0, 0.0, d1)
     d2 = np.where(d2 <= 0, 0.0, d1)
 
-    print(np.sum(d1))
-    print(np.sum(d2))
-
     pd1 = np.where(d1 <= 0, 0.0, d1 - ave1)
     pd2 = np.where(d2 <= 0, 0.0, d2 - ave2)
 
@@ -1507,7 +1511,7 @@ def rot_and_search_fft(data, vec, dp1, dp2, dp3, dp4, angle, target_list, alpha)
 
     # Search for best translation using FFT
     fft_result_list_vec = fft_search_best_dot(target_list[:3], query_list_vec, a, b, c, fft_object, ifft_object)
-    fft_result_list_prob = fft_search_best_dot(target_list[4:], query_list_prob, a, b, c, fft_object, ifft_object)
+    fft_result_list_prob = fft_search_best_dot(target_list[3:], query_list_prob, a, b, c, fft_object, ifft_object)
 
     vec_score, vec_trans = find_best_trans_list(fft_result_list_vec)
     prob_score, prob_trans = find_best_trans_list(fft_result_list_prob)
