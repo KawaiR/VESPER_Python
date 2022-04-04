@@ -807,12 +807,17 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
     rot_vec_dict = {}
     rot_data_dict = {}
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() + 4) as executor:
-        trans_vec = {executor.submit(rot_mrc, mrc_search.data, mrc_search.vec, angle, ): angle for angle in angle_comb}
-        for future in concurrent.futures.as_completed(trans_vec):
-            angle = trans_vec[future]
-            rot_vec_dict[tuple(angle)] = future.result()[0]
-            rot_data_dict[tuple(angle)] = future.result()[1]
+    for angle in angle_comb:
+        new_vec, new_data = rot_mrc(mrc_search.data, mrc_search.vec, angle)
+        rot_vec_dict[str(angle)] = new_vec
+        rot_data_dict[str(angle)] = new_data
+
+    # with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count() - 1) as executor:
+    #     trans_vec = {executor.submit(rot_mrc, mrc_search.data, mrc_search.vec, angle): angle for angle in angle_comb}
+    #     for future in concurrent.futures.as_completed(trans_vec):
+    #         angle = trans_vec[future]
+    #         rot_vec_dict[tuple(angle)] = future.result()[0]
+    #         rot_data_dict[tuple(angle)] = future.result()[1]
 
     time_rot = time.time()
 
@@ -952,6 +957,7 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
 
     for i, result_mrc in enumerate(refined_list):
         print("Rotation=", str(result_mrc["angle"]), "Translation=", str(result_mrc["vec_trans"]))
+
         sco_arr = get_score(
             mrc_target,
             result_mrc["data"],
@@ -963,6 +969,7 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
                  result_mrc["vec"],
                  result_mrc["data"],
                  sco_arr,
+                 result_mrc["vec_score"],
                  mrc_search.xwidth,
                  result_mrc["vec_trans"],
                  result_mrc["angle"],
@@ -976,8 +983,10 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
     return refined_list
 
 
-def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, mrc_search_p1, mrc_search_p2,
-                        mrc_search_p3, mrc_search_p4, alpha=1, TopN=10, ang=10, mode="VecProduct", is_eval_mode=False):
+def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
+                        mrc_target, mrc_search,
+                        mrc_search_p1, mrc_search_p2, mrc_search_p3, mrc_search_p4,
+                        ang, alpha=0.0, TopN=10, num_proc=4):
     """The main search function for fining the best superimposition for the target and the query map.
 
     Args:
@@ -1001,18 +1010,6 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, 
     Returns:
         refined_list (list): a list of refined search results including the probability score
     """
-
-    if is_eval_mode:
-        print("#For Evaluation Mode")
-        print("#Please use the same coordinate system and map size for map1 and map2.")
-        print("#Example:")
-        print("#In Chimera command line: open map1 and map2 as #0 and #1, then type")
-        print("#> open map1.mrc")
-        print("#> open map2.mrc")
-        print("#> vop #1 resample onGrid #0")
-        print("#> volume #2 save new.mrc")
-        print("#Chimera will generate the resampled map2.mrc as new.mrc")
-        return
 
     # init the target map vectors
     # does this part need to be changed?
@@ -1062,36 +1059,111 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, 
 
     angle_score = []
 
-    with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count() - 1) as executor:
-        rets = {
-            executor.submit(rot_and_search_fft,
-                            mrc_search.data,
-                            mrc_search.vec,
-                            mrc_search_p1.data,
-                            mrc_search_p2.data,
-                            mrc_search_p3.data,
-                            mrc_search_p4.data,
-                            angle,
-                            target_list,
-                            alpha): angle for angle in angle_comb}
-        for future in tqdm(concurrent.futures.as_completed(rets), total=len(angle_comb)):
-            angle = rets[future]
-            angle_score.append([tuple(angle),
-                                future.result()[0] * rd3,
-                                future.result()[1],
-                                future.result()[2] * rd3,
-                                future.result()[3]])
+    for angle in tqdm(angle_comb):
+        vec_score, vec_trans, prob_score, prob_trans, _, _ = rot_and_search_fft(mrc_search.data,
+                                                                                mrc_search.vec,
+                                                                                mrc_search_p1.data,
+                                                                                mrc_search_p2.data,
+                                                                                mrc_search_p3.data,
+                                                                                mrc_search_p4.data,
+                                                                                angle,
+                                                                                target_list,
+                                                                                alpha=0.0)
+        angle_score.append({
+            "angle": angle,
+            "vec_score": vec_score * rd3,
+            "vec_trans": vec_trans,
+            "prob_score": prob_score * rd3,
+            "prob_trans": prob_trans
+        })
+
+    # with concurrent.futures.ProcessPoolExecutor(max_workers=num_proc) as executor:
+    #     rets = {
+    #         executor.submit(rot_and_search_fft,
+    #                         mrc_search.data,
+    #                         mrc_search.vec,
+    #                         mrc_search_p1.data,
+    #                         mrc_search_p2.data,
+    #                         mrc_search_p3.data,
+    #                         mrc_search_p4.data,
+    #                         angle,
+    #                         target_list,
+    #                         alpha=0.0): angle for angle in angle_comb}
+    #     for future in tqdm(concurrent.futures.as_completed(rets), total=len(angle_comb)):
+    #         angle = rets[future]
+    #         angle_score.append([tuple(angle),
+    #                             future.result()[0] * rd3,
+    #                             future.result()[1],
+    #                             future.result()[2] * rd3,
+    #                             future.result()[3]])
 
     # calculate the ave and std for all the rotations
-    score_arr_vec = np.array([row[1] for row in angle_score])
-    score_arr_prob = np.array([row[3] for row in angle_score])
+    score_arr_vec = np.array([row["vec_score"] for row in angle_score])
+    score_arr_prob = np.array([row["prob_score"] for row in angle_score])
+
+    vstd = np.std(score_arr_vec)
+    vave = np.mean(score_arr_vec)
+    pstd = np.std(score_arr_prob)
+    pave = np.mean(score_arr_prob)
 
     print()
-    print("DotScore Std=", str(np.std(score_arr_vec)), "DotScore Ave=", str(np.mean(score_arr_vec)))
-    print("ProbScore Std=", str(np.std(score_arr_prob)), "ProbScore Ave=", str(np.mean(score_arr_prob)))
+    print("DotScore Std=", vstd, "DotScore Ave=", vave)
+    print("ProbScore Std=", pstd, "ProbScore Ave=", pave)
+    print()
+
+    angle_score = []
+
+    for angle in tqdm(angle_comb):
+        vec_score, vec_trans, prob_score, prob_trans, mixed_score, mixed_trans = rot_and_search_fft(mrc_search.data,
+                                                                                                    mrc_search.vec,
+                                                                                                    mrc_search_p1.data,
+                                                                                                    mrc_search_p2.data,
+                                                                                                    mrc_search_p3.data,
+                                                                                                    mrc_search_p4.data,
+                                                                                                    angle,
+                                                                                                    target_list,
+                                                                                                    alpha,
+                                                                                                    vstd, vave, pstd,
+                                                                                                    pave)
+        angle_score.append({
+            "angle": angle,
+            "vec_score": vec_score * rd3,
+            "vec_trans": vec_trans,
+            "prob_score": prob_score * rd3,
+            "prob_trans": prob_trans,
+            "mixed_score": mixed_score * rd3,
+            "mixed_trans": mixed_trans
+        })
+
+    # with concurrent.futures.ProcessPoolExecutor(max_workers=num_proc) as executor:
+    #     rets = {
+    #         executor.submit(rot_and_search_fft,
+    #                         mrc_search.data,
+    #                         mrc_search.vec,
+    #                         mrc_search_p1.data,
+    #                         mrc_search_p2.data,
+    #                         mrc_search_p3.data,
+    #                         mrc_search_p4.data,
+    #                         angle,
+    #                         target_list,
+    #                         alpha,
+    #                         vstd,
+    #                         vave,
+    #                         pstd,
+    #                         pave): angle for angle in angle_comb}
+    #
+    #     for future in tqdm(concurrent.futures.as_completed(rets), total=len(angle_comb)):
+    #         angle = rets[future]
+    #         angle_score.append({"angle": tuple(angle),
+    #                             "vec_score": future.result()[0] * rd3,
+    #                             "vec_trans": future.result()[1],
+    #                             "prob_score": future.result()[2] * rd3,
+    #                             "prob_trans": future.result()[3],
+    #                             "mixed_score": future.result()[4] * rd3,
+    #                             "mixed_trans": future.result()[5]})
 
     # sort the list and get topN
-    sorted_topN = sorted(angle_score, key=lambda x: x[1], reverse=True)[:TopN]
+    sorted_topN = sorted(angle_score, key=lambda x: x["mixed_score"], reverse=True)[:TopN]
 
     # print TopN Statistics
     for idx, x in enumerate(sorted_topN):
@@ -1102,12 +1174,13 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, 
         # Search for +5.0 and -5.0 degree rotation.
         print("\n###Start Refining###")
 
-        for t_mrc in sorted_topN:
+        for result_mrc in sorted_topN:
+            ang = result_mrc["angle"]
             ang_list = np.array(
                 np.meshgrid(
-                    [t_mrc[0][0] - 5, t_mrc[0][0], t_mrc[0][0] + 5],
-                    [t_mrc[0][1] - 5, t_mrc[0][1], t_mrc[0][1] + 5],
-                    [t_mrc[0][2] - 5, t_mrc[0][2], t_mrc[0][2] + 5],
+                    [ang[0] - 5, ang[0], ang[0] + 5],
+                    [ang[1] - 5, ang[1], ang[1] + 5],
+                    [ang[2] - 5, ang[2], ang[2] + 5],
                 )
             ).T.reshape(-1, 3)
 
@@ -1118,14 +1191,14 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, 
                 rotated_vec = rotated[0]
                 rotated_data = rotated[1]
 
-                x2 = copy.deepcopy(rotated_vec[..., 0])
-                y2 = copy.deepcopy(rotated_vec[..., 1])
-                z2 = copy.deepcopy(rotated_vec[..., 2])
+                x2 = rotated_vec[..., 0]
+                y2 = rotated_vec[..., 1]
+                z2 = rotated_vec[..., 2]
 
-                p21 = copy.deepcopy(rotated[2])
-                p22 = copy.deepcopy(rotated[3])
-                p23 = copy.deepcopy(rotated[4])
-                p24 = copy.deepcopy(rotated[5])
+                p21 = rotated[2]
+                p22 = rotated[3]
+                p23 = rotated[4]
+                p24 = rotated[5]
 
                 target_list = [X1, Y1, Z1, P1, P2, P3, P4]
                 query_list_vec = [x2, y2, z2]
@@ -1142,11 +1215,21 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, 
                 # Search for best translation using FFT
                 fft_result_list_vec = fft_search_best_dot(target_list[:3], query_list_vec, a, b, c, fft_object,
                                                           ifft_object)
-                fft_result_list_prob = fft_search_best_dot(target_list[4:], query_list_prob, a, b, c, fft_object,
+                fft_result_list_prob = fft_search_best_dot(target_list[3:], query_list_prob, a, b, c, fft_object,
                                                            ifft_object)
 
                 vec_score, vec_trans = find_best_trans_list(fft_result_list_vec)
                 prob_score, prob_trans = find_best_trans_list(fft_result_list_prob)
+
+                mixed_score = None
+                mixed_trans = None
+
+                if alpha != 0.0:
+                    mixed_score, mixed_trans = find_best_trans_mixed(fft_result_list_vec,
+                                                                     fft_result_list_prob,
+                                                                     alpha,
+                                                                     vstd, vave,
+                                                                     pstd, pave)
 
                 refined_score.append(
                     {"angle": tuple(ang),
@@ -1155,9 +1238,11 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, 
                      "vec": rotated_vec,
                      "data": rotated_data,
                      "prob_score": prob_score * rd3,
-                     "prob_trans": prob_trans})
+                     "prob_trans": prob_trans,
+                     "mixed_score": mixed_score * rd3,
+                     "mixed_trans": mixed_trans})
 
-        refined_list = sorted(refined_score, key=lambda x: x["vec_score"], reverse=True)[:TopN]  # Sort by dot score
+        refined_list = sorted(refined_score, key=lambda x: x["vec_score"], reverse=True)[:TopN]  # Sort by mixed score
     else:
         refined_list = sorted_topN
 
@@ -1170,6 +1255,9 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, 
     for i, result_mrc in enumerate(refined_list):
         print("\nMODEL # " + str(i + 1))
         print("Rotation=", str(result_mrc["angle"]), "Translation=", str(result_mrc["vec_trans"]))
+        print("Probability Score=", str(result_mrc["prob_score"]),
+              "Probability Translation=", str(result_mrc["prob_trans"]))
+
         sco_arr = get_score(
             mrc_target,
             result_mrc["data"],
@@ -1181,9 +1269,9 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_target, mrc_search, 
                  result_mrc["vec"],
                  result_mrc["data"],
                  sco_arr,
-                 result_mrc["vec_score"],
+                 result_mrc["mixed_score"],
                  mrc_search.xwidth,
-                 result_mrc["vec_trans"],
+                 result_mrc["mixed_trans"],
                  result_mrc["angle"],
                  folder_path,
                  i + 1)
@@ -1465,7 +1553,12 @@ def calc_angle_comb(ang_interval):
     return angle_comb
 
 
-def rot_and_search_fft(data, vec, dp1, dp2, dp3, dp4, angle, target_list, alpha):
+def rot_and_search_fft(data, vec,
+                       dp1, dp2, dp3, dp4,
+                       angle,
+                       target_list,
+                       alpha,
+                       vstd=None, vave=None, pstd=None, pave=None):
     """ Calculate the best translation for the query map given a rotation angle
 
     Args:
@@ -1489,14 +1582,23 @@ def rot_and_search_fft(data, vec, dp1, dp2, dp3, dp4, angle, target_list, alpha)
 
     # Compose the query FFT list
 
-    x2 = copy.deepcopy(new_vec_array[..., 0])
-    y2 = copy.deepcopy(new_vec_array[..., 1])
-    z2 = copy.deepcopy(new_vec_array[..., 2])
+    # x2 = copy.deepcopy(new_vec_array[..., 0])
+    # y2 = copy.deepcopy(new_vec_array[..., 1])
+    # z2 = copy.deepcopy(new_vec_array[..., 2])
+    #
+    # p21 = copy.deepcopy(new_data_array_p1)
+    # p22 = copy.deepcopy(new_data_array_p2)
+    # p23 = copy.deepcopy(new_data_array_p3)
+    # p24 = copy.deepcopy(new_data_array_p4)
 
-    p21 = copy.deepcopy(new_data_array_p1)
-    p22 = copy.deepcopy(new_data_array_p2)
-    p23 = copy.deepcopy(new_data_array_p3)
-    p24 = copy.deepcopy(new_data_array_p4)
+    x2 = new_vec_array[..., 0]
+    y2 = new_vec_array[..., 1]
+    z2 = new_vec_array[..., 2]
+
+    p21 = new_data_array_p1
+    p22 = new_data_array_p2
+    p23 = new_data_array_p3
+    p24 = new_data_array_p4
 
     query_list_vec = [x2, y2, z2]
     query_list_prob = [p21, p22, p23, p24]
@@ -1516,4 +1618,32 @@ def rot_and_search_fft(data, vec, dp1, dp2, dp3, dp4, angle, target_list, alpha)
     vec_score, vec_trans = find_best_trans_list(fft_result_list_vec)
     prob_score, prob_trans = find_best_trans_list(fft_result_list_prob)
 
-    return vec_score, vec_trans, prob_score, prob_trans
+    mixed_score = None
+    mixed_trans = None
+
+    if alpha != 0.0:
+        mixed_score, mixed_trans = find_best_trans_mixed(fft_result_list_vec,
+                                                         fft_result_list_prob,
+                                                         alpha,
+                                                         vstd, vave,
+                                                         pstd, pave)
+
+    return vec_score, vec_trans, prob_score, prob_trans, mixed_score, mixed_trans
+
+
+def find_best_trans_mixed(vec_fft_results, prob_fft_results, alpha, vstd, vave, pstd, pave):
+    sum_arr_v = sum(vec_fft_results)
+    sum_arr_p = sum(prob_fft_results)
+
+    # z-score normalization
+    sum_arr_v = (sum_arr_v - vave) / vstd
+    sum_arr_p = (sum_arr_p - pave) / pstd
+
+    # alpha mixing
+    sum_arr_mixed = (1 - alpha) * sum_arr_v + alpha * sum_arr_p
+
+    # find the best translation
+    best_score = sum_arr_mixed.max()
+    trans = np.unravel_index(sum_arr_mixed.argmax(), sum_arr_mixed.shape)
+
+    return best_score, trans

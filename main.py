@@ -43,7 +43,8 @@ if __name__ == "__main__":
     prob.add_argument('-npa', type=str, required=True, help='numpy array for Predictions for map 1')
     prob.add_argument('-b', type=str, required=True, help='MAP2.mrc (small)')
     prob.add_argument('-npb', type=str, required=True, help='numpy array for Predictions for map 2')
-    prob.add_argument('-alpha', type=int, default=1, required=False, help='The weighting parameter ')
+    prob.add_argument('-alpha', type=float, default=0.0, required=False, help='The weighting parameter for alpha '
+                                                                              'mixing def=0.0')
     prob.add_argument('-t', type=float, help='Threshold of density map1')
     prob.add_argument('-T', type=float, help='Threshold of density map2')
     prob.add_argument('-g', type=float, default=16.0,
@@ -58,6 +59,7 @@ if __name__ == "__main__":
                                                         'P: Pearson Correlation Coefficient Mode\n' +
                                                         'L: Laplacian Filtering Mode')
     prob.add_argument('-E', type=bool, default=False, help='Evaluation mode of the current position def=false')
+    prob.add_argument('-P', type=int, default=4, help='Number of processors to use def=4')
 
     args = parser.parse_args()
 
@@ -180,6 +182,8 @@ if __name__ == "__main__":
         modeVal = args.M
         evalMode = args.E
 
+        num_processors = args.P
+
         print(objA, objB, probA, probB, threshold1, threshold2, bandwidth, voxel_spacing, angle_spacing, topN, showPdb,
               modeVal, evalMode)
 
@@ -265,5 +269,7 @@ if __name__ == "__main__":
         mrc_N2_p3 = fastVEC(mrc2_p3, mrc_N2_p3, dreso=bandwidth)
         mrc_N2_p4 = fastVEC(mrc2_p4, mrc_N2_p4, dreso=bandwidth)
 
-        search_map_fft_prob(mrc_N1_p1, mrc_N1_p2, mrc_N1_p3, mrc_N1_p4, mrc_N1, mrc_N2, mrc_N2_p1, mrc_N2_p2, mrc_N2_p3,
-                            mrc_N2_p4, alpha=1, ang=angle_spacing, mode="VecProduct")
+        search_map_fft_prob(mrc_N1_p1, mrc_N1_p2, mrc_N1_p3, mrc_N1_p4,
+                            mrc_N1, mrc_N2,
+                            mrc_N2_p1, mrc_N2_p2, mrc_N2_p3, mrc_N2_p4,
+                            ang=angle_spacing, alpha=alpha, TopN=topN, num_proc=num_processors)
