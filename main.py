@@ -60,6 +60,10 @@ if __name__ == "__main__":
                                                         'L: Laplacian Filtering Mode')
     prob.add_argument('-E', type=bool, default=False, help='Evaluation mode of the current position def=false')
     prob.add_argument('-P', type=int, default=4, help='Number of processors to use def=4')
+    prob.add_argument('-vav', type=float, help='TBA (density map average)')
+    prob.add_argument('-vstd', type=float, help='TBA (density map standard deviation)')
+    prob.add_argument('-pav', type=float, help='TBA (probability map average)')
+    prob.add_argument('-pstd', type=float, help='TBA (probability map standard deviation)')
 
     args = parser.parse_args()
 
@@ -176,6 +180,21 @@ if __name__ == "__main__":
         angle_spacing = args.A
         topN = args.N
 
+        #average and standard deviation
+        vave = args.vav
+        vstd = args.vstd
+        pave = args.pav
+        pstd = args.pstd
+
+        if vave is None:
+            vave = -10
+        if vstd is None:
+            vstd = -10
+        if pave is None:
+            pave = -10
+        if pstd is None:
+            pstd = -10
+
         # necessary?
         showPdb = args.S
 
@@ -185,7 +204,7 @@ if __name__ == "__main__":
         num_processors = args.P
 
         print(objA, objB, probA, probB, threshold1, threshold2, bandwidth, voxel_spacing, angle_spacing, topN, showPdb,
-              modeVal, evalMode)
+              modeVal, evalMode, vave, vstd, pave, pstd)
 
         prob_maps = np.load(npA)
         prob_maps_chain = np.load(npB)
@@ -272,4 +291,5 @@ if __name__ == "__main__":
         search_map_fft_prob(mrc_N1_p1, mrc_N1_p2, mrc_N1_p3, mrc_N1_p4,
                             mrc_N1, mrc_N2,
                             mrc_N2_p1, mrc_N2_p2, mrc_N2_p3, mrc_N2_p4,
-                            ang=angle_spacing, alpha=alpha, TopN=topN, num_proc=num_processors)
+                            ang=angle_spacing, alpha=alpha, TopN=topN, num_proc=num_processors, vave=vave, vstd=vstd,
+                            pave = pave, pstd = pstd)
