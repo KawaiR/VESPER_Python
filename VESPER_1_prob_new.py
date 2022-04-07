@@ -809,8 +809,8 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
 
     for angle in angle_comb:
         new_vec, new_data = rot_mrc(mrc_search.data, mrc_search.vec, angle)
-        rot_vec_dict[str(angle)] = new_vec
-        rot_data_dict[str(angle)] = new_data
+        rot_vec_dict[tuple(angle)] = new_vec
+        rot_data_dict[tuple(angle)] = new_data
 
     # with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count() - 1) as executor:
     #     trans_vec = {executor.submit(rot_mrc, mrc_search.data, mrc_search.vec, angle): angle for angle in angle_comb}
