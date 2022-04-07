@@ -1126,6 +1126,11 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
                                                                                                     alpha,
                                                                                                     vstd, vave, pstd,
                                                                                                     pave)
+
+        print("checking values")
+        print(mixed_score, mixed_trans)
+        print()
+
         angle_score.append({
             "angle": angle,
             "vec_score": vec_score * rd3,
