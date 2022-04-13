@@ -1,6 +1,7 @@
 # coding: utf-8
 import concurrent.futures
 import copy
+#from types import NoneType
 import mrcfile
 import multiprocessing
 import numba
@@ -1127,9 +1128,10 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
                                                                                                     vstd, vave, pstd,
                                                                                                     pave)
 
-        print("checking values")
-        print(mixed_score, mixed_trans)
-        print()
+        if mixed_score is None:
+            mixed_score = 0
+        if mixed_trans is None:
+            mixed_trans = []
 
         angle_score.append({
             "angle": angle,
@@ -1227,8 +1229,8 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
                 vec_score, vec_trans = find_best_trans_list(fft_result_list_vec)
                 prob_score, prob_trans = find_best_trans_list(fft_result_list_prob)
 
-                mixed_score = None
-                mixed_trans = None
+                mixed_score = 0
+                mixed_trans = []
 
                 if alpha != 0.0:
                     mixed_score, mixed_trans = find_best_trans_mixed(fft_result_list_vec,
