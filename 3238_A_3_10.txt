@@ -1,0 +1,154 @@
+../3238_A/emd_3238.mrc ../3238_A/emd_3238_chainA.mrc ../3238_A/emd_3238.mrc ../3238_A/emd_3238_chainA.mrc 0.04 0.04 16.0 3.0 10.0 10 True V False
+
+###Generating Params for Resampling Density Map 1###
+
+#dmax=79.79191688385484
+Nvox= 54, 54, 54
+cent= 125.5, 125.5, 125.5
+ori= 44.5, 44.5, 44.5
+
+###Generating Params for Resampling Density Map 2###
+
+#dmax=65.20352751193758
+Nvox= 44, 44, 44
+cent= 120.9000015258789, 139.6999969482422, 140.4000015258789
+ori= 54.900001525878906, 73.69999694824219, 74.4000015258789
+
+###Generating Params for Resampling Probability Map 1###
+
+#dmax=80.1046190927839
+Nvox= 54, 54, 54
+cent= 125.5, 125.5, 125.5
+ori= 44.5, 44.5, 44.5
+
+#dmax=80.1046190927839
+Nvox= 54, 54, 54
+cent= 125.5, 125.5, 125.5
+ori= 44.5, 44.5, 44.5
+
+#dmax=80.1046190927839
+Nvox= 54, 54, 54
+cent= 125.5, 125.5, 125.5
+ori= 44.5, 44.5, 44.5
+
+#dmax=80.1046190927839
+Nvox= 54, 54, 54
+cent= 125.5, 125.5, 125.5
+ori= 44.5, 44.5, 44.5
+
+###Generating Params for Resampling Probability Map 2###
+
+#dmax=65.89005994837157
+Nvox= 44, 44, 44
+cent= 120.9000015258789, 139.6999969482422, 140.4000015258789
+ori= 54.900001525878906, 73.69999694824219, 74.4000015258789
+
+#dmax=65.89005994837157
+Nvox= 44, 44, 44
+cent= 120.9000015258789, 139.6999969482422, 140.4000015258789
+ori= 54.900001525878906, 73.69999694824219, 74.4000015258789
+
+#dmax=65.89005994837157
+Nvox= 44, 44, 44
+cent= 120.9000015258789, 139.6999969482422, 140.4000015258789
+ori= 54.900001525878906, 73.69999694824219, 74.4000015258789
+
+#dmax=65.89005994837157
+Nvox= 44, 44, 44
+cent= 120.9000015258789, 139.6999969482422, 140.4000015258789
+ori= 54.900001525878906, 73.69999694824219, 74.4000015258789
+
+###Processing MAP1 Resampling###
+#MAP SUM=85143.1015625 COUNT=3025 AVE=28.146480560302734 STD=1656.8521728515625 STD_norm=590.49169921875
+#MAP SUM=617046.0625 COUNT=4666 AVE=132.2430419921875 STD=10438.6005859375 STD_norm=5231.0927734375
+#MAP SUM=253037.8125 COUNT=4666 AVE=54.230140686035156 STD=4973.34716796875 STD_norm=3318.41943359375
+#MAP SUM=877450.625 COUNT=4666 AVE=188.052001953125 STD=15120.2138671875 STD_norm=7975.87255859375
+#MAP SUM=365075.40625 COUNT=4666 AVE=78.24163055419922 STD=8428.4208984375 STD_norm=6517.22216796875
+
+###Processing MAP2 Resampling###
+#MAP SUM=58156.94921875 COUNT=1749 AVE=33.25154495239258 STD=1442.917724609375 STD_norm=384.9718933105469
+#MAP SUM=449329.40625 COUNT=2529 AVE=177.67079162597656 STD=9563.7705078125 STD_norm=3410.716064453125
+#MAP SUM=213838.5 COUNT=2529 AVE=84.5545654296875 STD=5188.90625 STD_norm=2973.83984375
+#MAP SUM=416952.03125 COUNT=2529 AVE=164.86834716796875 STD=9939.513671875 STD_norm=5481.9462890625
+#MAP SUM=304674.6875 COUNT=2529 AVE=120.47239685058594 STD=7771.904296875 STD_norm=4868.01806640625
+
+###Start Searching###
+100%|████████████████████████████████████████████████████████████████████████████████| 24624/24624 [16:29<00:00, 24.89it/s]
+
+DotScore Std= 35.0847560969132 DotScore Ave= 191.17383018508232
+ProbScore Std= 8556306.14605908 ProbScore Ave= 101011566.2614361
+
+100%|████████████████████████████████████████████████████████████████████████████████| 24624/24624 [16:32<00:00, 24.80it/s]
+# 1 {'angle': array([0., 0., 0.]), 'vec_score': 1221.6304425138444, 'vec_trans': (2, 49, 49), 'prob_score': 237502144.36092058, 'prob_trans': (1, 49, 49), 'mixed_score': 30.725416603160085, 'mixed_trans': (1, 49, 49)}
+# 2 {'angle': array([180., 180., 180.]), 'vec_score': 1221.6304425138444, 'vec_trans': (2, 49, 49), 'prob_score': 237502144.36092058, 'prob_trans': (1, 49, 49), 'mixed_score': 30.725416603160085, 'mixed_trans': (1, 49, 49)}
+# 3 {'angle': array([  0., 350.,   0.]), 'vec_score': 880.8423512675913, 'vec_trans': (2, 49, 50), 'prob_score': 200994886.5453437, 'prob_trans': (2, 49, 50), 'mixed_score': 24.298433292689122, 'mixed_trans': (2, 49, 50)}
+# 4 {'angle': array([180., 190., 180.]), 'vec_score': 880.8423512675913, 'vec_trans': (2, 49, 50), 'prob_score': 200994886.5453437, 'prob_trans': (2, 49, 50), 'mixed_score': 24.298433292689122, 'mixed_trans': (2, 49, 50)}
+# 5 {'angle': array([ 0., 10.,  0.]), 'vec_score': 860.1058781689783, 'vec_trans': (2, 49, 49), 'prob_score': 198442621.7694457, 'prob_trans': (2, 49, 49), 'mixed_score': 23.853769750546157, 'mixed_trans': (2, 49, 49)}
+# 6 {'angle': array([180., 170., 180.]), 'vec_score': 860.1058781689783, 'vec_trans': (2, 49, 49), 'prob_score': 198442621.7694457, 'prob_trans': (2, 49, 49), 'mixed_score': 23.853769750546157, 'mixed_trans': (2, 49, 49)}
+# 7 {'angle': array([180., 180., 170.]), 'vec_score': 756.9797795051567, 'vec_trans': (4, 49, 49), 'prob_score': 190275470.378296, 'prob_trans': (3, 49, 49), 'mixed_score': 21.804091728903114, 'mixed_trans': (4, 49, 49)}
+# 8 {'angle': array([ 0.,  0., 10.]), 'vec_score': 746.6579281613575, 'vec_trans': (0, 50, 49), 'prob_score': 190712203.90712798, 'prob_trans': (0, 50, 49), 'mixed_score': 21.785260440481633, 'mixed_trans': (0, 50, 49)}
+# 9 {'angle': array([10.,  0.,  0.]), 'vec_score': 694.797032972616, 'vec_trans': (2, 50, 51), 'prob_score': 190229215.93984655, 'prob_trans': (1, 50, 51), 'mixed_score': 20.79679799827262, 'mixed_trans': (1, 50, 51)}
+# 10 {'angle': array([190., 180., 180.]), 'vec_score': 694.797032972616, 'vec_trans': (2, 50, 51), 'prob_score': 190229215.93984655, 'prob_trans': (1, 50, 51), 'mixed_score': 20.79679799827262, 'mixed_trans': (1, 50, 51)}
+
+###Start Refining###
+###Writing results to PDB files###
+
+MODEL # 1
+Rotation= (0.0, 0.0, 0.0) Translation= (2, 49, 49)
+Probability Score= 237502144.36092058 Probability Translation= (1, 49, 49)
+Overlap=0.3825658847379091 1321/3453 CC=0.7021571 PCC=0.4735586
+Score= 1221.6305
+
+MODEL # 2
+Rotation= (180.0, 180.0, 180.0) Translation= (2, 49, 49)
+Probability Score= 237502144.36092058 Probability Translation= (1, 49, 49)
+Overlap=0.3825658847379091 1321/3453 CC=0.7021571 PCC=0.4735586
+Score= 1221.6305
+
+MODEL # 3
+Rotation= (0.0, 5.0, 0.0) Translation= (2, 49, 49)
+Probability Score= 213405859.3572118 Probability Translation= (2, 49, 49)
+Overlap=0.34147025813692483 1217/3564 CC=0.64828783 PCC=0.44368178
+Score= 1071.4695
+
+MODEL # 4
+Rotation= (180.0, 175.0, 180.0) Translation= (2, 49, 49)
+Probability Score= 213405859.3572118 Probability Translation= (2, 49, 49)
+Overlap=0.34147025813692483 1217/3564 CC=0.64828783 PCC=0.44368178
+Score= 1071.4695
+
+MODEL # 5
+Rotation= (0.0, 5.0, 0.0) Translation= (2, 49, 49)
+Probability Score= 213405859.3572118 Probability Translation= (2, 49, 49)
+Overlap=0.34147025813692483 1217/3564 CC=0.64828783 PCC=0.44368178
+Score= 1071.4695
+
+MODEL # 6
+Rotation= (180.0, 175.0, 180.0) Translation= (2, 49, 49)
+Probability Score= 213405859.3572118 Probability Translation= (2, 49, 49)
+Overlap=0.34147025813692483 1217/3564 CC=0.64828783 PCC=0.44368178
+Score= 1071.4695
+
+MODEL # 7
+Rotation= (0.0, -5.0, 0.0) Translation= (2, 49, 50)
+Probability Score= 214174031.9748006 Probability Translation= (2, 49, 50)
+Overlap=0.3218136577273984 1164/3617 CC=0.6221669 PCC=0.40683505
+Score= 1058.3696
+
+MODEL # 8
+Rotation= (180.0, 185.0, 180.0) Translation= (2, 49, 50)
+Probability Score= 214174031.9748006 Probability Translation= (2, 49, 50)
+Overlap=0.3218136577273984 1164/3617 CC=0.6221669 PCC=0.40683505
+Score= 1058.3696
+
+MODEL # 9
+Rotation= (0.0, 355.0, 0.0) Translation= (2, 49, 50)
+Probability Score= 214174031.9748006 Probability Translation= (2, 49, 50)
+Overlap=0.3218136577273984 1164/3617 CC=0.6221669 PCC=0.40683505
+Score= 1058.3696
+
+MODEL # 10
+Rotation= (180.0, 185.0, 180.0) Translation= (2, 49, 50)
+Probability Score= 214174031.9748006 Probability Translation= (2, 49, 50)
+Overlap=0.3218136577273984 1164/3617 CC=0.6221669 PCC=0.40683505
+Score= 1058.3696

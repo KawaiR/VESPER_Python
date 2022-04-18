@@ -941,7 +941,7 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
                                   "data": rot_mrc_data})
 
         # sort the list to find the TopN with best scores
-        refined_list = sorted(refined_score, key=lambda x: x["vec_score"], reverse=True)[:TopN]
+        refined_list = sorted(refined_score, key=lambda x: x["mixed_score"], reverse=True)[:TopN]
 
     else:
         # no action taken when refinement is disabled
@@ -1224,12 +1224,12 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
                 mixed_score = None
                 mixed_trans = None
 
-                if alpha != 0.0:
-                    mixed_score, mixed_trans = find_best_trans_mixed(fft_result_list_vec,
-                                                                     fft_result_list_prob,
-                                                                     alpha,
-                                                                     vstd, vave,
-                                                                     pstd, pave)
+                #if alpha != 0.0:
+                mixed_score, mixed_trans = find_best_trans_mixed(fft_result_list_vec,
+                                                                fft_result_list_prob,
+                                                                alpha,
+                                                                vstd, vave,
+                                                                pstd, pave)
 
                 refined_score.append(
                     {"angle": tuple(ang),
@@ -1621,12 +1621,12 @@ def rot_and_search_fft(data, vec,
     mixed_score = None
     mixed_trans = None
 
-    if alpha != 0.0:
-        mixed_score, mixed_trans = find_best_trans_mixed(fft_result_list_vec,
-                                                         fft_result_list_prob,
-                                                         alpha,
-                                                         vstd, vave,
-                                                         pstd, pave)
+    #if alpha != 0.0:
+    mixed_score, mixed_trans = find_best_trans_mixed(fft_result_list_vec,
+                                                    fft_result_list_prob,
+                                                    alpha,
+                                                    vstd, vave,
+                                                    pstd, pave)
 
     return vec_score, vec_trans, prob_score, prob_trans, mixed_score, mixed_trans
 
