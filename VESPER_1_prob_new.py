@@ -738,8 +738,6 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
         refined_list (list): a list of refined search results
     """
 
-    time_start = time.time()
-
     if is_eval_mode:
         print("#For Evaluation Mode")
         print("#Please use the same coordinate system and map size for map1 and map2.")
@@ -807,6 +805,7 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
     rot_vec_dict = {}
     rot_data_dict = {}
 
+    # search process
     for angle in angle_comb:
         new_vec, new_data = rot_mrc(mrc_search.data, mrc_search.vec, angle)
         rot_vec_dict[tuple(angle)] = new_vec
@@ -818,10 +817,6 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
     #         angle = trans_vec[future]
     #         rot_vec_dict[tuple(angle)] = future.result()[0]
     #         rot_data_dict[tuple(angle)] = future.result()[1]
-
-    time_rot = time.time()
-
-    print("Rotation time: " + str(time_rot - time_start))
 
     # fftw plans
     a = pyfftw.empty_aligned((x1.shape), dtype="float32")
@@ -861,23 +856,38 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
                 rstd3 = 1.0 / mrc_target.std_norm_ave ** 2
                 best = best * rstd3
 
-        angle_score.append([tuple(angle), best * rd3, trans])
+        angle_score.append({"angle": tuple(angle),
+                            "vec_score": best * rd3,
+                            "vec_trans": trans})
 
     # calculate the ave and std
-    score_arr = np.array([row[1] for row in angle_score])
+    score_arr = np.array([row["vec_score"] for row in angle_score])
     ave = np.mean(score_arr)
     std = np.std(score_arr)
     print("Std= " + str(std) + " Ave= " + str(ave))
 
     # sort the list and get topN
-    sorted_topN = sorted(angle_score, key=lambda x: x[1], reverse=True)[:TopN]
+    sorted_topN = sorted(angle_score, key=lambda x: x["vec_score"], reverse=True)[:TopN]
 
-    for x in sorted_topN:
-        print(x)
+    for i, result_mrc in enumerate(sorted_topN):
+        r = euler2rot(result_mrc["angle"])
+        new_trans = convert_trans(mrc_target.cent,
+                                  mrc_search.cent,
+                                  r,
+                                  result_mrc["vec_trans"],
+                                  mrc_search.xwidth,
+                                  mrc_search.xdim)
 
-    time_fft = time.time()
-
-    print("FFT time: " + str(time_fft - time_rot))
+        print("#" + str(i),
+              "Rotation=",
+              "(" + str(result_mrc["angle"][0]),
+              str(result_mrc["angle"][1]),
+              str(result_mrc["angle"][2]) + ")",
+              "Translation=",
+              "(" + "{:.3f}".format(new_trans[0]),
+              "{:.3f}".format(new_trans[1]),
+              "{:.3f}".format(new_trans[2]) + ")"
+              )
 
     refined_score = []
     if ang > 5.0:
@@ -885,29 +895,38 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
         # setup all the angles for refinement
         # initialize the refinement list by ±5 degrees
         refine_ang_list = []
-        for t_mrc in sorted_topN:
-            curr_ang_arr = np.array(
+        for result_mrc in sorted_topN:
+            ang = result_mrc["angle"]
+            ang_list = np.array(
                 np.meshgrid(
-                    [t_mrc[0][0] - 5, t_mrc[0][0], t_mrc[0][0] + 5],
-                    [t_mrc[0][1] - 5, t_mrc[0][1], t_mrc[0][1] + 5],
-                    [t_mrc[0][2] - 5, t_mrc[0][2], t_mrc[0][2] + 5],
+                    [ang[0] - 5, ang[0], ang[0] + 5],
+                    [ang[1] - 5, ang[1], ang[1] + 5],
+                    [ang[2] - 5, ang[2], ang[2] + 5],
                 )
             ).T.reshape(-1, 3)
-            refine_ang_list.append(curr_ang_arr)
+            ang_list = ang_list[(ang_list[:, 0] < 360) &
+                                (ang_list[:, 1] < 360) &
+                                (ang_list[:, 2] < 180)]
+            refine_ang_list.append(ang_list)
 
         refine_ang_arr = np.concatenate(refine_ang_list, axis=0)
         print(refine_ang_arr.shape)
 
         # rotate the mrc vector and data according to the list (multi-threaded)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() + 4) as executor:
-            trans_vec = {executor.submit(rot_mrc, mrc_search.data, mrc_search.vec, angle, ): angle for angle in
-                         refine_ang_arr}
-            for future in concurrent.futures.as_completed(trans_vec):
-                angle = trans_vec[future]
-                rot_vec_dict[tuple(angle)] = future.result()[0]
-                rot_data_dict[tuple(angle)] = future.result()[1]
+        # with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() + 4) as executor:
+        #     trans_vec = {executor.submit(rot_mrc, mrc_search.data, mrc_search.vec, angle, ): angle for angle in
+        #                  refine_ang_arr}
+        #     for future in concurrent.futures.as_completed(trans_vec):
+        #         angle = trans_vec[future]
+        #         rot_vec_dict[tuple(angle)] = future.result()[0]
+        #         rot_data_dict[tuple(angle)] = future.result()[1]
 
-        for angle in tqdm(refine_ang_arr, desc="Refine FFT Process"):
+        for angle in tqdm(refine_ang_arr, desc="Refining Rotation"):
+            vec, data = rot_mrc(mrc_search.data, mrc_search.vec, angle)
+            rot_vec_dict[tuple(angle)] = vec
+            rot_data_dict[tuple(angle)] = data
+
+        for angle in tqdm(refine_ang_arr, desc="Refining FFT"):
 
             rot_mrc_vec = rot_vec_dict[tuple(angle)]
             rot_mrc_data = rot_data_dict[tuple(angle)]
@@ -947,16 +966,31 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
         # no action taken when refinement is disabled
         refined_list = sorted_topN
 
-    # calculate the refinement time
-    time_refine = time.time()
-    print("Refinement time: " + str(time_refine - time_fft))
-
     # Write result to PDB files
     folder_path = Path.cwd() / ("VESPER_RUN_" + datetime.now().strftime('%m%d_%H%M'))
     Path.mkdir(folder_path)
 
+    print("\n###Writing results to PDB files###")
+
     for i, result_mrc in enumerate(refined_list):
-        print("Rotation=", str(result_mrc["angle"]), "Translation=", str(result_mrc["vec_trans"]))
+        r = euler2rot(result_mrc["angle"])
+        new_trans = convert_trans(mrc_target.cent,
+                                  mrc_search.cent,
+                                  r,
+                                  result_mrc["vec_trans"],
+                                  mrc_search.xwidth,
+                                  mrc_search.xdim)
+
+        print("\n#" + str(i),
+              "Rotation=",
+              "(" + str(result_mrc["angle"][0]),
+              str(result_mrc["angle"][1]),
+              str(result_mrc["angle"][2]) + ")",
+              "Translation=",
+              "(" + "{:.3f}".format(new_trans[0]),
+              "{:.3f}".format(new_trans[1]),
+              "{:.3f}".format(new_trans[2]) + ")"
+              )
 
         sco_arr = get_score(
             mrc_target,
@@ -974,11 +1008,7 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
                  result_mrc["vec_trans"],
                  result_mrc["angle"],
                  folder_path,
-                 i + 1)
-
-    time_writefile = time.time()
-
-    print("File Write time: " + str(time_writefile - time_refine))
+                 i)
 
     return refined_list
 
@@ -1070,7 +1100,7 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
                                                                                 target_list,
                                                                                 alpha=0.0)
         angle_score.append({
-            "angle": angle,
+            "angle": tuple(angle),
             "vec_score": vec_score * rd3,
             "vec_trans": vec_trans,
             "prob_score": prob_score * rd3,
@@ -1221,15 +1251,11 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
                 vec_score, vec_trans = find_best_trans_list(fft_result_list_vec)
                 prob_score, prob_trans = find_best_trans_list(fft_result_list_prob)
 
-                mixed_score = None
-                mixed_trans = None
-
-                if alpha != 0.0:
-                    mixed_score, mixed_trans = find_best_trans_mixed(fft_result_list_vec,
-                                                                     fft_result_list_prob,
-                                                                     alpha,
-                                                                     vstd, vave,
-                                                                     pstd, pave)
+                mixed_score, mixed_trans = find_best_trans_mixed(fft_result_list_vec,
+                                                                 fft_result_list_prob,
+                                                                 alpha,
+                                                                 vstd, vave,
+                                                                 pstd, pave)
 
                 refined_score.append(
                     {"angle": tuple(ang),
@@ -1242,7 +1268,7 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
                      "mixed_score": mixed_score * rd3,
                      "mixed_trans": mixed_trans})
 
-        refined_list = sorted(refined_score, key=lambda x: x["vec_score"], reverse=True)[:TopN]  # Sort by mixed score
+        refined_list = sorted(refined_score, key=lambda x: x["mixed_score"], reverse=True)[:TopN]  # Sort by mixed score
     else:
         refined_list = sorted_topN
 
@@ -1253,9 +1279,28 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
     print("###Writing results to PDB files###")
 
     for i, result_mrc in enumerate(refined_list):
-        print("\nMODEL # " + str(i + 1))
-        print("Rotation=", str(result_mrc["angle"]), "Translation=", str(result_mrc["vec_trans"]))
-        print("Probability Score=", str(result_mrc["prob_score"]),
+        # convert the translation back to the original coordinate system
+        r = euler2rot(result_mrc["angle"])
+        new_trans = convert_trans(mrc_target.cent,
+                                  mrc_search.cent,
+                                  r,
+                                  result_mrc["mixed_trans"],
+                                  mrc_search.xwidth,
+                                  mrc_search.xdim)
+
+        print("\n#" + str(i),
+              "Rotation=",
+              "(" + str(result_mrc["angle"][0]),
+              str(result_mrc["angle"][1]),
+              str(result_mrc["angle"][2]) + ")",
+              "Translation=",
+              "(" + "{:.3f}".format(new_trans[0]),
+              "{:.3f}".format(new_trans[1]),
+              "{:.3f}".format(new_trans[2]) + ")"
+              )
+
+        print("Translation=", str(result_mrc["vec_trans"]),
+              "Probability Score=", str(result_mrc["prob_score"]),
               "Probability Translation=", str(result_mrc["prob_trans"]))
 
         sco_arr = get_score(
@@ -1274,7 +1319,7 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
                  result_mrc["mixed_trans"],
                  result_mrc["angle"],
                  folder_path,
-                 i + 1)
+                 i)
 
     return refined_list
 
@@ -1618,15 +1663,11 @@ def rot_and_search_fft(data, vec,
     vec_score, vec_trans = find_best_trans_list(fft_result_list_vec)
     prob_score, prob_trans = find_best_trans_list(fft_result_list_prob)
 
-    mixed_score = None
-    mixed_trans = None
-
-    if alpha != 0.0:
-        mixed_score, mixed_trans = find_best_trans_mixed(fft_result_list_vec,
-                                                         fft_result_list_prob,
-                                                         alpha,
-                                                         vstd, vave,
-                                                         pstd, pave)
+    mixed_score, mixed_trans = find_best_trans_mixed(fft_result_list_vec,
+                                                     fft_result_list_prob,
+                                                     alpha,
+                                                     vstd, vave,
+                                                     pstd, pave)
 
     return vec_score, vec_trans, prob_score, prob_trans, mixed_score, mixed_trans
 
@@ -1647,3 +1688,24 @@ def find_best_trans_mixed(vec_fft_results, prob_fft_results, alpha, vstd, vave, 
     trans = np.unravel_index(sum_arr_mixed.argmax(), sum_arr_mixed.shape)
 
     return best_score, trans
+
+
+# convert euler angles to rotation matrix
+def euler2rot(euler):
+    r = R.from_euler('xyz', euler, degrees=True)
+    return r
+
+
+def convert_trans(cen1, cen2, r, trans, xwidth2, dim):
+    trans = np.array(trans)
+
+    if trans[0] > 0.5 * dim:
+        trans[0] -= dim
+    if trans[1] > 0.5 * dim:
+        trans[1] -= dim
+    if trans[2] > 0.5 * dim:
+        trans[2] -= dim
+
+    cen2 = r.apply(cen2)  # rotate the center
+    new_trans = cen1 - (cen2 + trans * xwidth2)  # calculate new translation
+    return new_trans
