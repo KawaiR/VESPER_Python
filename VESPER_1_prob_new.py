@@ -864,7 +864,7 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
     score_arr = np.array([row["vec_score"] for row in angle_score])
     ave = np.mean(score_arr)
     std = np.std(score_arr)
-    print("Std= " + str(std) + " Ave= " + str(ave))
+    print("\nStd= " + str(std) + " Ave= " + str(ave) + "\n")
 
     # sort the list and get topN
     sorted_topN = sorted(angle_score, key=lambda x: x["vec_score"], reverse=True)[:TopN]
@@ -878,7 +878,7 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
                                   mrc_search.xwidth,
                                   mrc_search.xdim)
 
-        print("#" + str(i),
+        print("M" + str(i),
               "Rotation=",
               "(" + str(result_mrc["angle"][0]),
               str(result_mrc["angle"][1]),
@@ -888,6 +888,8 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
               "{:.3f}".format(new_trans[1]),
               "{:.3f}".format(new_trans[2]) + ")"
               )
+
+    print()
 
     refined_score = []
     if ang > 5.0:
@@ -904,13 +906,17 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
                     [ang[2] - 5, ang[2], ang[2] + 5],
                 )
             ).T.reshape(-1, 3)
+
+            # sanity check
             ang_list = ang_list[(ang_list[:, 0] < 360) &
                                 (ang_list[:, 1] < 360) &
                                 (ang_list[:, 2] < 180)]
+
+            ang_list[ang_list < 0] += 360
+
             refine_ang_list.append(ang_list)
 
         refine_ang_arr = np.concatenate(refine_ang_list, axis=0)
-        print(refine_ang_arr.shape)
 
         # rotate the mrc vector and data according to the list (multi-threaded)
         # with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() + 4) as executor:
