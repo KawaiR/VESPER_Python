@@ -73,7 +73,7 @@ Usage: main.py orig [-h] -a A -b B [-t T] [-T T] [-g G] [-s S] [-A A] [-N N] [-S
 ```
 (2) Mode 2: Probability maps generated for each secondary structure in both maps used for alignment must be generated using Emap2sec+ first and then converted into .npy format using the interpolation script before running this mode. (With Secondary structure matching.)
 ```
-Usage: main.py prob [-h] -a A -npa NPA -b B -npb NPB [-t T] [-T T] [-g G] [-s S] [-A A] [-N N] [-S S] [-M M] [-E E]
+Usage: main.py prob [-h] -a A -npa NPA -b B -npb NPB [-t T] [-T T] [-g G] [-s S] [-A A] [-N N] [-S S] [-M M] [-E E] [-vav VAV] [-vstd VSTD] [-pav PAV] [-pstd PSTD]
 ---Options---
  -h, --help  show this help message and exit
   -a A          MAP1.mrc (large)
@@ -94,6 +94,10 @@ Usage: main.py prob [-h] -a A -npa NPA -b B -npb NPB [-t T] [-T T] [-g G] [-s S]
                 P: Pearson Correlation Coefficient Mode
                 L: Laplacian Filtering Mode
   -E E          Evaluation mode of the current position def=false
+  -vav VAV      Pre-computed average for density map
+  -vstd VSTD    Pre-computed standard deviation for density map
+  -pav PAV      Pre-computed average for probability map
+  -pstd PSTD    Pre-computed standard deviation for probability map
 ```
 ## Identify the best fitting of two EM maps.
 Run VESPER in either probability or original mode.
