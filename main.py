@@ -177,8 +177,10 @@ if __name__ == "__main__":
         mrc_N2.data = np.zeros((dim, dim, dim))
 
         # fastVEC
+        print()
         mrc_N1 = fastVEC(mrc1, mrc_N1, bandwidth)
         mrc_N2 = fastVEC(mrc2, mrc_N2, bandwidth)
+        print()
 
         # search map
         if modeVal == 'V':
