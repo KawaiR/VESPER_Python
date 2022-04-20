@@ -1,7 +1,6 @@
 # coding: utf-8
 import concurrent.futures
 import copy
-#from types import NoneType
 import mrcfile
 import multiprocessing
 import numba
@@ -1680,7 +1679,11 @@ def rot_and_search_fft(data, vec,
     vec_score, vec_trans = find_best_trans_list(fft_result_list_vec)
     prob_score, prob_trans = find_best_trans_list(fft_result_list_prob)
 
-    mixed_score, mixed_trans = find_best_trans_mixed(fft_result_list_vec,
+    mixed_score, mixed_trans = None, None
+
+    if vstd is not None and vave is not None and pstd is not None and pave is not None:
+
+        mixed_score, mixed_trans = find_best_trans_mixed(fft_result_list_vec,
                                                      fft_result_list_prob,
                                                      alpha,
                                                      vstd, vave,
