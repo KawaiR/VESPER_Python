@@ -1,6 +1,7 @@
 # coding: utf-8
 import concurrent.futures
 import copy
+#from types import NoneType
 import mrcfile
 import multiprocessing
 import numba
@@ -1022,7 +1023,7 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
 def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
                         mrc_target, mrc_search,
                         mrc_search_p1, mrc_search_p2, mrc_search_p3, mrc_search_p4,
-                        ang, alpha=0.0, TopN=10, num_proc=4):
+                        ang, alpha=0.0, TopN=10, num_proc=4, vave=-10, vstd=-10, pave=-10, pstd=-10):
     """The main search function for fining the best superimposition for the target and the query map.
 
     Args:
@@ -1095,52 +1096,53 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
 
     angle_score = []
 
-    for angle in tqdm(angle_comb):
-        vec_score, vec_trans, prob_score, prob_trans, _, _ = rot_and_search_fft(mrc_search.data,
-                                                                                mrc_search.vec,
-                                                                                mrc_search_p1.data,
-                                                                                mrc_search_p2.data,
-                                                                                mrc_search_p3.data,
-                                                                                mrc_search_p4.data,
-                                                                                angle,
-                                                                                target_list,
-                                                                                alpha=0.0)
-        angle_score.append({
-            "angle": tuple(angle),
-            "vec_score": vec_score * rd3,
-            "vec_trans": vec_trans,
-            "prob_score": prob_score * rd3,
-            "prob_trans": prob_trans
-        })
+    if (vave < 0 or vstd < 0 or pstd < 0 or pave < 0):
+        for angle in tqdm(angle_comb):
+            vec_score, vec_trans, prob_score, prob_trans, _, _ = rot_and_search_fft(mrc_search.data,
+                                                                                    mrc_search.vec,
+                                                                                    mrc_search_p1.data,
+                                                                                    mrc_search_p2.data,
+                                                                                    mrc_search_p3.data,
+                                                                                    mrc_search_p4.data,
+                                                                                    angle,
+                                                                                    target_list,
+                                                                                    alpha=0.0)
+            angle_score.append({
+                "angle": angle,
+                "vec_score": vec_score * rd3,
+                "vec_trans": vec_trans,
+                "prob_score": prob_score * rd3,
+                "prob_trans": prob_trans
+            })
 
-    # with concurrent.futures.ProcessPoolExecutor(max_workers=num_proc) as executor:
-    #     rets = {
-    #         executor.submit(rot_and_search_fft,
-    #                         mrc_search.data,
-    #                         mrc_search.vec,
-    #                         mrc_search_p1.data,
-    #                         mrc_search_p2.data,
-    #                         mrc_search_p3.data,
-    #                         mrc_search_p4.data,
-    #                         angle,
-    #                         target_list,
-    #                         alpha=0.0): angle for angle in angle_comb}
-    #     for future in tqdm(concurrent.futures.as_completed(rets), total=len(angle_comb)):
-    #         angle = rets[future]
-    #         angle_score.append([tuple(angle),
-    #                             future.result()[0] * rd3,
-    #                             future.result()[1],
-    #                             future.result()[2] * rd3,
-    #                             future.result()[3]])
+        # with concurrent.futures.ProcessPoolExecutor(max_workers=num_proc) as executor:
+        #     rets = {
+        #         executor.submit(rot_and_search_fft,
+        #                         mrc_search.data,
+        #                         mrc_search.vec,
+        #                         mrc_search_p1.data,
+        #                         mrc_search_p2.data,
+        #                         mrc_search_p3.data,
+        #                         mrc_search_p4.data,
+        #                         angle,
+        #                         target_list,
+        #                         alpha=0.0): angle for angle in angle_comb}
+        #     for future in tqdm(concurrent.futures.as_completed(rets), total=len(angle_comb)):
+        #         angle = rets[future]
+        #         angle_score.append([tuple(angle),
+        #                             future.result()[0] * rd3,
+        #                             future.result()[1],
+        #                             future.result()[2] * rd3,
+        #                             future.result()[3]])
 
-    # calculate the ave and std for all the rotations
-    score_arr_vec = np.array([row["vec_score"] for row in angle_score])
-    score_arr_prob = np.array([row["prob_score"] for row in angle_score])
+        # calculate the ave and std for all the rotations
+        score_arr_vec = np.array([row["vec_score"] for row in angle_score])
+        score_arr_prob = np.array([row["prob_score"] for row in angle_score])
 
-    vstd = np.std(score_arr_vec)
-    vave = np.mean(score_arr_vec)
-    pstd = np.std(score_arr_prob)
-    pave = np.mean(score_arr_prob)
+        vstd = np.std(score_arr_vec)
+        vave = np.mean(score_arr_vec)
+        pstd = np.std(score_arr_prob)
+        pave = np.mean(score_arr_prob)
 
     print()
     print("DotScore Std=", vstd, "DotScore Ave=", vave)
@@ -1161,6 +1163,12 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
                                                                                                     alpha,
                                                                                                     vstd, vave, pstd,
                                                                                                     pave)
+
+        if mixed_score is None:
+            mixed_score = 0
+        if mixed_trans is None:
+            mixed_trans = []
+
         angle_score.append({
             "angle": angle,
             "vec_score": vec_score * rd3,
@@ -1256,6 +1264,9 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
 
                 vec_score, vec_trans = find_best_trans_list(fft_result_list_vec)
                 prob_score, prob_trans = find_best_trans_list(fft_result_list_prob)
+
+                mixed_score = 0
+                mixed_trans = []
 
                 mixed_score, mixed_trans = find_best_trans_mixed(fft_result_list_vec,
                                                                  fft_result_list_prob,
