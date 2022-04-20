@@ -13,6 +13,55 @@ import pyfftw
 import scipy.fft
 from VESPER_1_prob_new import *
 
+def alpha_is_zero(objA, objB, threshold1, threshold2, bandwidth, voxel_spacing, angle_spacing, topN, showPdb, modeVal,
+              evalMode):
+    # construct mrc objects
+        mrc1 = mrc_obj(objA)
+        mrc2 = mrc_obj(objB)
+
+        # set voxel size
+        mrc1, mrc_N1 = mrc_set_vox_size(mrc1, threshold1, voxel_spacing)
+        mrc2, mrc_N2 = mrc_set_vox_size(mrc2, threshold2, voxel_spacing)
+
+        if mrc_N1.xdim > mrc_N2.xdim:
+            dim = mrc_N2.xdim = mrc_N2.ydim = mrc_N2.zdim = mrc_N1.xdim
+
+            mrc_N2.orig[0] = mrc_N2.cent[0] - 0.5 * voxel_spacing * mrc_N2.xdim
+            mrc_N2.orig[1] = mrc_N2.cent[1] - 0.5 * voxel_spacing * mrc_N2.xdim
+            mrc_N2.orig[2] = mrc_N2.cent[2] - 0.5 * voxel_spacing * mrc_N2.xdim
+
+        else:
+            dim = mrc_N1.xdim = mrc_N1.ydim = mrc_N1.zdim = mrc_N2.xdim
+
+            mrc_N1.orig[0] = mrc_N1.cent[0] - 0.5 * voxel_spacing * mrc_N1.xdim
+            mrc_N1.orig[1] = mrc_N1.cent[1] - 0.5 * voxel_spacing * mrc_N1.xdim
+            mrc_N1.orig[2] = mrc_N1.cent[2] - 0.5 * voxel_spacing * mrc_N1.xdim
+
+        mrc_N1.dens = np.zeros((dim ** 3, 1))
+        mrc_N1.vec = np.zeros((dim, dim, dim, 3), dtype="float32")
+        mrc_N1.data = np.zeros((dim, dim, dim))
+        mrc_N2.dens = np.zeros((dim ** 3, 1))
+        mrc_N2.vec = np.zeros((dim, dim, dim, 3), dtype="float32")
+        mrc_N2.data = np.zeros((dim, dim, dim))
+
+        # fastVEC
+        mrc_N1 = fastVEC(mrc1, mrc_N1, bandwidth)
+        mrc_N2 = fastVEC(mrc2, mrc_N2, bandwidth)
+
+        # search map
+        if modeVal == 'V':
+            modeVal = "VecProduct"
+        elif modeVal == 'O':
+            modeVal = "Overlap"
+        elif modeVal == 'C':
+            modeVal = "CC"
+        elif modeVal == 'P':
+            modeVal = "PCC"
+        elif modeVal == 'L':
+            modeVal = "Laplacian"
+
+        search_map_fft(mrc_N1, mrc_N2, TopN=topN, ang=angle_spacing, mode=modeVal, is_eval_mode=evalMode)
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     subparser = parser.add_subparsers(dest='command')
@@ -206,90 +255,94 @@ if __name__ == "__main__":
         print(objA, objB, probA, probB, threshold1, threshold2, bandwidth, voxel_spacing, angle_spacing, topN, showPdb,
               modeVal, evalMode, vave, vstd, pave, pstd)
 
-        prob_maps = np.load(npA)
-        prob_maps_chain = np.load(npB)
+        if alpha == 0.0:
+            alpha_is_zero(objA, objB, threshold1, threshold2, bandwidth, voxel_spacing, angle_spacing, topN, showPdb, modeVal,
+              evalMode)
+        else:
+            prob_maps = np.load(npA)
+            prob_maps_chain = np.load(npB)
 
-        mrc1 = mrc_obj(objA)
-        mrc2 = mrc_obj(objB)
+            mrc1 = mrc_obj(objA)
+            mrc2 = mrc_obj(objB)
 
-        # probability MRCs
+            # probability MRCs
 
-        mrc1_p1 = mrc_obj(objA)
-        mrc1_p2 = mrc_obj(objA)
-        mrc1_p3 = mrc_obj(objA)
-        mrc1_p4 = mrc_obj(objA)
+            mrc1_p1 = mrc_obj(objA)
+            mrc1_p2 = mrc_obj(objA)
+            mrc1_p3 = mrc_obj(objA)
+            mrc1_p4 = mrc_obj(objA)
 
-        mrc2_p1 = mrc_obj(objB)
-        mrc2_p2 = mrc_obj(objB)
-        mrc2_p3 = mrc_obj(objB)
-        mrc2_p4 = mrc_obj(objB)
+            mrc2_p1 = mrc_obj(objB)
+            mrc2_p2 = mrc_obj(objB)
+            mrc2_p3 = mrc_obj(objB)
+            mrc2_p4 = mrc_obj(objB)
 
-        mrc2_p1.data = np.swapaxes(prob_maps_chain[:, :, :, 0], 0, 2)
-        mrc2_p2.data = np.swapaxes(prob_maps_chain[:, :, :, 1], 0, 2)
-        mrc2_p3.data = np.swapaxes(prob_maps_chain[:, :, :, 2], 0, 2)
-        mrc2_p4.data = np.swapaxes(prob_maps_chain[:, :, :, 3], 0, 2)
+            mrc2_p1.data = np.swapaxes(prob_maps_chain[:, :, :, 0], 0, 2)
+            mrc2_p2.data = np.swapaxes(prob_maps_chain[:, :, :, 1], 0, 2)
+            mrc2_p3.data = np.swapaxes(prob_maps_chain[:, :, :, 2], 0, 2)
+            mrc2_p4.data = np.swapaxes(prob_maps_chain[:, :, :, 3], 0, 2)
 
-        mrc1_p1.data = np.swapaxes(prob_maps[:, :, :, 0], 0, 2)
-        mrc1_p2.data = np.swapaxes(prob_maps[:, :, :, 1], 0, 2)
-        mrc1_p3.data = np.swapaxes(prob_maps[:, :, :, 2], 0, 2)
-        mrc1_p4.data = np.swapaxes(prob_maps[:, :, :, 3], 0, 2)
+            mrc1_p1.data = np.swapaxes(prob_maps[:, :, :, 0], 0, 2)
+            mrc1_p2.data = np.swapaxes(prob_maps[:, :, :, 1], 0, 2)
+            mrc1_p3.data = np.swapaxes(prob_maps[:, :, :, 2], 0, 2)
+            mrc1_p4.data = np.swapaxes(prob_maps[:, :, :, 3], 0, 2)
 
-        print("\n###Generating Params for Resampling Density Map 1###")
-        mrc1, mrc_N1 = mrc_set_vox_size(mrc1, threshold1, voxel_spacing)
+            print("\n###Generating Params for Resampling Density Map 1###")
+            mrc1, mrc_N1 = mrc_set_vox_size(mrc1, threshold1, voxel_spacing)
 
-        print("\n###Generating Params for Resampling Density Map 2###")
-        mrc2, mrc_N2 = mrc_set_vox_size(mrc2, threshold2, voxel_spacing)
+            print("\n###Generating Params for Resampling Density Map 2###")
+            mrc2, mrc_N2 = mrc_set_vox_size(mrc2, threshold2, voxel_spacing)
 
-        print("\n###Generating Params for Resampling Probability Map 1###")
+            print("\n###Generating Params for Resampling Probability Map 1###")
 
-        mrc1_p1, mrc_N1_p1 = mrc_set_vox_size(mrc1_p1, th=0.0, voxel_size=voxel_spacing)
-        mrc1_p2, mrc_N1_p2 = mrc_set_vox_size(mrc1_p2, th=0.0, voxel_size=voxel_spacing)
-        mrc1_p3, mrc_N1_p3 = mrc_set_vox_size(mrc1_p3, th=0.0, voxel_size=voxel_spacing)
-        mrc1_p4, mrc_N1_p4 = mrc_set_vox_size(mrc1_p4, th=0.0, voxel_size=voxel_spacing)
+            mrc1_p1, mrc_N1_p1 = mrc_set_vox_size(mrc1_p1, th=0.0, voxel_size=voxel_spacing)
+            mrc1_p2, mrc_N1_p2 = mrc_set_vox_size(mrc1_p2, th=0.0, voxel_size=voxel_spacing)
+            mrc1_p3, mrc_N1_p3 = mrc_set_vox_size(mrc1_p3, th=0.0, voxel_size=voxel_spacing)
+            mrc1_p4, mrc_N1_p4 = mrc_set_vox_size(mrc1_p4, th=0.0, voxel_size=voxel_spacing)
 
-        print("\n###Generating Params for Resampling Probability Map 2###")
+            print("\n###Generating Params for Resampling Probability Map 2###")
 
-        mrc2_p1, mrc_N2_p1 = mrc_set_vox_size(mrc2_p1, th=0.0, voxel_size=voxel_spacing)
-        mrc2_p2, mrc_N2_p2 = mrc_set_vox_size(mrc2_p2, th=0.0, voxel_size=voxel_spacing)
-        mrc2_p3, mrc_N2_p3 = mrc_set_vox_size(mrc2_p3, th=0.0, voxel_size=voxel_spacing)
-        mrc2_p4, mrc_N2_p4 = mrc_set_vox_size(mrc2_p4, th=0.0, voxel_size=voxel_spacing)
+            mrc2_p1, mrc_N2_p1 = mrc_set_vox_size(mrc2_p1, th=0.0, voxel_size=voxel_spacing)
+            mrc2_p2, mrc_N2_p2 = mrc_set_vox_size(mrc2_p2, th=0.0, voxel_size=voxel_spacing)
+            mrc2_p3, mrc_N2_p3 = mrc_set_vox_size(mrc2_p3, th=0.0, voxel_size=voxel_spacing)
+            mrc2_p4, mrc_N2_p4 = mrc_set_vox_size(mrc2_p4, th=0.0, voxel_size=voxel_spacing)
 
-        mrc_list = [mrc_N1, mrc_N2, mrc_N1_p1, mrc_N1_p2, mrc_N1_p3, mrc_N1_p4, mrc_N2_p1, mrc_N2_p2, mrc_N2_p3,
-                    mrc_N2_p4]
-        max_dim = np.max((mrc_N1.xdim, mrc_N2.xdim, mrc_N2_p1.xdim, mrc_N2_p2.xdim, mrc_N2_p3.xdim, mrc_N2_p4.xdim,
-                          mrc_N1_p1.xdim, mrc_N1_p2.xdim, mrc_N1_p3.xdim, mrc_N1_p4.xdim))
+            mrc_list = [mrc_N1, mrc_N2, mrc_N1_p1, mrc_N1_p2, mrc_N1_p3, mrc_N1_p4, mrc_N2_p1, mrc_N2_p2, mrc_N2_p3,
+                        mrc_N2_p4]
+            max_dim = np.max((mrc_N1.xdim, mrc_N2.xdim, mrc_N2_p1.xdim, mrc_N2_p2.xdim, mrc_N2_p3.xdim, mrc_N2_p4.xdim,
+                            mrc_N1_p1.xdim, mrc_N1_p2.xdim, mrc_N1_p3.xdim, mrc_N1_p4.xdim))
 
-        # Unify dimensions in all maps
+            # Unify dimensions in all maps
 
-        for mrc in mrc_list:
-            if mrc.xdim != max_dim:
-                mrc.xdim = mrc.ydim = mrc.zdim = max_dim
-                mrc.orig[0] = mrc.cent[0] - 0.5 * voxel_spacing * mrc.xdim
-                mrc.orig[1] = mrc.cent[1] - 0.5 * voxel_spacing * mrc.xdim
-                mrc.orig[2] = mrc.cent[2] - 0.5 * voxel_spacing * mrc.xdim
+            for mrc in mrc_list:
+                if mrc.xdim != max_dim:
+                    mrc.xdim = mrc.ydim = mrc.zdim = max_dim
+                    mrc.orig[0] = mrc.cent[0] - 0.5 * voxel_spacing * mrc.xdim
+                    mrc.orig[1] = mrc.cent[1] - 0.5 * voxel_spacing * mrc.xdim
+                    mrc.orig[2] = mrc.cent[2] - 0.5 * voxel_spacing * mrc.xdim
 
-        for mrc in mrc_list:
-            mrc.dens = np.zeros((max_dim ** 3, 1), dtype="float32")
-            mrc.data = np.zeros((max_dim, max_dim, max_dim), dtype="float32")
-            mrc.vec = np.zeros((max_dim, max_dim, max_dim, 3), dtype="float32")
+            for mrc in mrc_list:
+                mrc.dens = np.zeros((max_dim ** 3, 1), dtype="float32")
+                mrc.data = np.zeros((max_dim, max_dim, max_dim), dtype="float32")
+                mrc.vec = np.zeros((max_dim, max_dim, max_dim, 3), dtype="float32")
 
-        print("\n###Processing MAP1 Resampling###")
+            print("\n###Processing MAP1 Resampling###")
 
-        mrc_N1 = fastVEC(mrc1, mrc_N1, dreso=bandwidth)
-        mrc_N1_p1 = fastVEC(mrc1_p1, mrc_N1_p1, dreso=bandwidth)
-        mrc_N1_p2 = fastVEC(mrc1_p2, mrc_N1_p2, dreso=bandwidth)
-        mrc_N1_p3 = fastVEC(mrc1_p3, mrc_N1_p3, dreso=bandwidth)
-        mrc_N1_p4 = fastVEC(mrc1_p4, mrc_N1_p4, dreso=bandwidth)
+            mrc_N1 = fastVEC(mrc1, mrc_N1, dreso=bandwidth)
+            mrc_N1_p1 = fastVEC(mrc1_p1, mrc_N1_p1, dreso=bandwidth)
+            mrc_N1_p2 = fastVEC(mrc1_p2, mrc_N1_p2, dreso=bandwidth)
+            mrc_N1_p3 = fastVEC(mrc1_p3, mrc_N1_p3, dreso=bandwidth)
+            mrc_N1_p4 = fastVEC(mrc1_p4, mrc_N1_p4, dreso=bandwidth)
 
-        print("\n###Processing MAP2 Resampling###")
-        mrc_N2 = fastVEC(mrc2, mrc_N2, dreso=bandwidth)
-        mrc_N2_p1 = fastVEC(mrc2_p1, mrc_N2_p1, dreso=bandwidth)
-        mrc_N2_p2 = fastVEC(mrc2_p2, mrc_N2_p2, dreso=bandwidth)
-        mrc_N2_p3 = fastVEC(mrc2_p3, mrc_N2_p3, dreso=bandwidth)
-        mrc_N2_p4 = fastVEC(mrc2_p4, mrc_N2_p4, dreso=bandwidth)
+            print("\n###Processing MAP2 Resampling###")
+            mrc_N2 = fastVEC(mrc2, mrc_N2, dreso=bandwidth)
+            mrc_N2_p1 = fastVEC(mrc2_p1, mrc_N2_p1, dreso=bandwidth)
+            mrc_N2_p2 = fastVEC(mrc2_p2, mrc_N2_p2, dreso=bandwidth)
+            mrc_N2_p3 = fastVEC(mrc2_p3, mrc_N2_p3, dreso=bandwidth)
+            mrc_N2_p4 = fastVEC(mrc2_p4, mrc_N2_p4, dreso=bandwidth)
 
-        search_map_fft_prob(mrc_N1_p1, mrc_N1_p2, mrc_N1_p3, mrc_N1_p4,
-                            mrc_N1, mrc_N2,
-                            mrc_N2_p1, mrc_N2_p2, mrc_N2_p3, mrc_N2_p4,
-                            ang=angle_spacing, alpha=alpha, TopN=topN, num_proc=num_processors, vave=vave, vstd=vstd,
-                            pave = pave, pstd = pstd)
+            search_map_fft_prob(mrc_N1_p1, mrc_N1_p2, mrc_N1_p3, mrc_N1_p4,
+                                mrc_N1, mrc_N2,
+                                mrc_N2_p1, mrc_N2_p2, mrc_N2_p3, mrc_N2_p4,
+                                ang=angle_spacing, alpha=alpha, TopN=topN, num_proc=num_processors, vave=vave, vstd=vstd,
+                                pave = pave, pstd = pstd)
