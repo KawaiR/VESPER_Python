@@ -43,7 +43,7 @@ if __name__ == "__main__":
     prob.add_argument('-npa', type=str, required=True, help='numpy array for Predictions for map 1')
     prob.add_argument('-b', type=str, required=True, help='MAP2.mrc (small)')
     prob.add_argument('-npb', type=str, required=True, help='numpy array for Predictions for map 2')
-    prob.add_argument('-alpha', type=float, default=0.0, required=False, help='The weighting parameter for alpha '
+    prob.add_argument('-alpha', type=float, default=0.5, required=False, help='The weighting parameter for alpha '
                                                                               'mixing def=0.0')
     prob.add_argument('-t', type=float, help='Threshold of density map1')
     prob.add_argument('-T', type=float, help='Threshold of density map2')
@@ -60,10 +60,10 @@ if __name__ == "__main__":
                                                         'L: Laplacian Filtering Mode')
     prob.add_argument('-E', type=bool, default=False, help='Evaluation mode of the current position def=false')
     prob.add_argument('-P', type=int, default=4, help='Number of processors to use def=4')
-    prob.add_argument('-vav', type=float, help='TBA (density map average)')
-    prob.add_argument('-vstd', type=float, help='TBA (density map standard deviation)')
-    prob.add_argument('-pav', type=float, help='TBA (probability map average)')
-    prob.add_argument('-pstd', type=float, help='TBA (probability map standard deviation)')
+    prob.add_argument('-vav', type=float, help='Pre-computed average for density map')
+    prob.add_argument('-vstd', type=float, help='Pre-computed standard deviation for density map')
+    prob.add_argument('-pav', type=float, help='Pre-computed average for probability map')
+    prob.add_argument('-pstd', type=float, help='Pre-computed standard deviation for probability map')
 
     args = parser.parse_args()
 
