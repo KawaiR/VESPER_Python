@@ -255,7 +255,7 @@ if __name__ == "__main__":
         num_processors = args.P
 
         print(objA, objB, probA, probB, threshold1, threshold2, bandwidth, voxel_spacing, angle_spacing, topN, showPdb,
-              modeVal, evalMode, vave, vstd, pave, pstd)
+              modeVal, evalMode, alpha, vave, vstd, pave, pstd)
 
         if alpha == 0.0:
             alpha_is_zero(objA, objB, threshold1, threshold2, bandwidth, voxel_spacing, angle_spacing, topN, showPdb, modeVal,
