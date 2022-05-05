@@ -973,7 +973,7 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
         refined_list = sorted_topN
 
     # Write result to PDB files
-    folder_path = Path.cwd() / ("VESPER_RUN_" + datetime.now().strftime('%m%d_%H%M'))
+    folder_path = Path.cwd() / ("VESPER_RUN_" + datetime.now().strftime('%m%d_%H%M%S'))
     Path.mkdir(folder_path)
 
     print("\n###Writing results to PDB files###")
