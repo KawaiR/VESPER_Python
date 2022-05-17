@@ -722,7 +722,8 @@ def fft_search_score_trans_1d(target_X, search_data, a, b, fft_object, ifft_obje
     return find_best_trans_list([dot_x])
 
 
-def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", is_eval_mode=False, save_path="."):
+def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", is_eval_mode=False, save_path=".",
+                   showPDB=False):
     """The main search function for fining the best superimposition for the target and the query map.
 
     Args:
@@ -973,10 +974,12 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
         refined_list = sorted_topN
 
     # Write result to PDB files
-    folder_path = Path.cwd() / ("VESPER_RUN_" + datetime.now().strftime('%m%d_%H%M%S'))
-    Path.mkdir(folder_path)
-
-    print("\n###Writing results to PDB files###")
+    if showPDB:
+        folder_path = Path.cwd() / ("VESPER_RUN_" + datetime.now().strftime('%m%d_%H%M%S'))
+        Path.mkdir(folder_path)
+        print("\n###Writing results to PDB files###")
+    else:
+        print()
 
     for i, result_mrc in enumerate(refined_list):
         r = euler2rot(result_mrc["angle"])
@@ -1005,16 +1008,17 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
             result_mrc["vec_trans"]
         )
 
-        show_vec(mrc_target.orig,
-                 result_mrc["vec"],
-                 result_mrc["data"],
-                 sco_arr,
-                 result_mrc["vec_score"],
-                 mrc_search.xwidth,
-                 result_mrc["vec_trans"],
-                 result_mrc["angle"],
-                 folder_path,
-                 i)
+        if showPDB:
+            show_vec(mrc_target.orig,
+                     result_mrc["vec"],
+                     result_mrc["data"],
+                     sco_arr,
+                     result_mrc["vec_score"],
+                     mrc_search.xwidth,
+                     result_mrc["vec_trans"],
+                     result_mrc["angle"],
+                     folder_path,
+                     i)
 
     return refined_list
 
@@ -1022,7 +1026,7 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
 def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
                         mrc_target, mrc_search,
                         mrc_search_p1, mrc_search_p2, mrc_search_p3, mrc_search_p4,
-                        ang, alpha=0.0, TopN=10, num_proc=4, vave=-10, vstd=-10, pave=-10, pstd=-10):
+                        ang, alpha=0.0, TopN=10, num_proc=4, vave=-10, vstd=-10, pave=-10, pstd=-10, showPDB=False):
     """The main search function for fining the best superimposition for the target and the query map.
 
     Args:
@@ -1210,7 +1214,7 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
 
     # print TopN Statistics
     for idx, x in enumerate(sorted_topN):
-        print("#", str(idx + 1), x)
+        print("M", str(idx + 1), x)
 
     refined_score = []
     if ang > 5.0:
@@ -1288,11 +1292,13 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
     else:
         refined_list = sorted_topN
 
+    if showPDB:
     # Write result to PDB files
-    folder_path = Path.cwd() / ("VESPER_RUN_" + datetime.now().strftime('%m%d_%H%M'))
-    Path.mkdir(folder_path)
-
-    print("###Writing results to PDB files###")
+        folder_path = Path.cwd() / ("VESPER_RUN_" + datetime.now().strftime('%m%d_%H%M'))
+        Path.mkdir(folder_path)
+        print("###Writing results to PDB files###")
+    else:
+        print()
 
     for i, result_mrc in enumerate(refined_list):
         # convert the translation back to the original coordinate system
@@ -1326,16 +1332,17 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
             result_mrc["vec_trans"]
         )
 
-        show_vec(mrc_target.orig,
-                 result_mrc["vec"],
-                 result_mrc["data"],
-                 sco_arr,
-                 result_mrc["mixed_score"],
-                 mrc_search.xwidth,
-                 result_mrc["mixed_trans"],
-                 result_mrc["angle"],
-                 folder_path,
-                 i)
+        if showPDB:
+            show_vec(mrc_target.orig,
+                     result_mrc["vec"],
+                     result_mrc["data"],
+                     sco_arr,
+                     result_mrc["mixed_score"],
+                     mrc_search.xwidth,
+                     result_mrc["mixed_trans"],
+                     result_mrc["angle"],
+                     folder_path,
+                     i)
 
     return refined_list
 
@@ -1682,12 +1689,11 @@ def rot_and_search_fft(data, vec,
     mixed_score, mixed_trans = None, None
 
     if vstd is not None and vave is not None and pstd is not None and pave is not None:
-
         mixed_score, mixed_trans = find_best_trans_mixed(fft_result_list_vec,
-                                                     fft_result_list_prob,
-                                                     alpha,
-                                                     vstd, vave,
-                                                     pstd, pave)
+                                                         fft_result_list_prob,
+                                                         alpha,
+                                                         vstd, vave,
+                                                         pstd, pave)
 
     return vec_score, vec_trans, prob_score, prob_trans, mixed_score, mixed_trans
 

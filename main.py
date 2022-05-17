@@ -13,54 +13,56 @@ import pyfftw
 import scipy.fft
 from VESPER_1_prob_new import *
 
-def alpha_is_zero(objA, objB, threshold1, threshold2, bandwidth, voxel_spacing, angle_spacing, topN, showPdb, modeVal,
-              evalMode):
+
+def alpha_is_zero(objA, objB, threshold1, threshold2, bandwidth, voxel_spacing, angle_spacing, topN, showPDB, modeVal,
+                  evalMode):
     # construct mrc objects
-        mrc1 = mrc_obj(objA)
-        mrc2 = mrc_obj(objB)
+    mrc1 = mrc_obj(objA)
+    mrc2 = mrc_obj(objB)
 
-        # set voxel size
-        mrc1, mrc_N1 = mrc_set_vox_size(mrc1, threshold1, voxel_spacing)
-        mrc2, mrc_N2 = mrc_set_vox_size(mrc2, threshold2, voxel_spacing)
+    # set voxel size
+    mrc1, mrc_N1 = mrc_set_vox_size(mrc1, threshold1, voxel_spacing)
+    mrc2, mrc_N2 = mrc_set_vox_size(mrc2, threshold2, voxel_spacing)
 
-        if mrc_N1.xdim > mrc_N2.xdim:
-            dim = mrc_N2.xdim = mrc_N2.ydim = mrc_N2.zdim = mrc_N1.xdim
+    if mrc_N1.xdim > mrc_N2.xdim:
+        dim = mrc_N2.xdim = mrc_N2.ydim = mrc_N2.zdim = mrc_N1.xdim
 
-            mrc_N2.orig[0] = mrc_N2.cent[0] - 0.5 * voxel_spacing * mrc_N2.xdim
-            mrc_N2.orig[1] = mrc_N2.cent[1] - 0.5 * voxel_spacing * mrc_N2.xdim
-            mrc_N2.orig[2] = mrc_N2.cent[2] - 0.5 * voxel_spacing * mrc_N2.xdim
+        mrc_N2.orig[0] = mrc_N2.cent[0] - 0.5 * voxel_spacing * mrc_N2.xdim
+        mrc_N2.orig[1] = mrc_N2.cent[1] - 0.5 * voxel_spacing * mrc_N2.xdim
+        mrc_N2.orig[2] = mrc_N2.cent[2] - 0.5 * voxel_spacing * mrc_N2.xdim
 
-        else:
-            dim = mrc_N1.xdim = mrc_N1.ydim = mrc_N1.zdim = mrc_N2.xdim
+    else:
+        dim = mrc_N1.xdim = mrc_N1.ydim = mrc_N1.zdim = mrc_N2.xdim
 
-            mrc_N1.orig[0] = mrc_N1.cent[0] - 0.5 * voxel_spacing * mrc_N1.xdim
-            mrc_N1.orig[1] = mrc_N1.cent[1] - 0.5 * voxel_spacing * mrc_N1.xdim
-            mrc_N1.orig[2] = mrc_N1.cent[2] - 0.5 * voxel_spacing * mrc_N1.xdim
+        mrc_N1.orig[0] = mrc_N1.cent[0] - 0.5 * voxel_spacing * mrc_N1.xdim
+        mrc_N1.orig[1] = mrc_N1.cent[1] - 0.5 * voxel_spacing * mrc_N1.xdim
+        mrc_N1.orig[2] = mrc_N1.cent[2] - 0.5 * voxel_spacing * mrc_N1.xdim
 
-        mrc_N1.dens = np.zeros((dim ** 3, 1))
-        mrc_N1.vec = np.zeros((dim, dim, dim, 3), dtype="float32")
-        mrc_N1.data = np.zeros((dim, dim, dim))
-        mrc_N2.dens = np.zeros((dim ** 3, 1))
-        mrc_N2.vec = np.zeros((dim, dim, dim, 3), dtype="float32")
-        mrc_N2.data = np.zeros((dim, dim, dim))
+    mrc_N1.dens = np.zeros((dim ** 3, 1))
+    mrc_N1.vec = np.zeros((dim, dim, dim, 3), dtype="float32")
+    mrc_N1.data = np.zeros((dim, dim, dim))
+    mrc_N2.dens = np.zeros((dim ** 3, 1))
+    mrc_N2.vec = np.zeros((dim, dim, dim, 3), dtype="float32")
+    mrc_N2.data = np.zeros((dim, dim, dim))
 
-        # fastVEC
-        mrc_N1 = fastVEC(mrc1, mrc_N1, bandwidth)
-        mrc_N2 = fastVEC(mrc2, mrc_N2, bandwidth)
+    # fastVEC
+    mrc_N1 = fastVEC(mrc1, mrc_N1, bandwidth)
+    mrc_N2 = fastVEC(mrc2, mrc_N2, bandwidth)
 
-        # search map
-        if modeVal == 'V':
-            modeVal = "VecProduct"
-        elif modeVal == 'O':
-            modeVal = "Overlap"
-        elif modeVal == 'C':
-            modeVal = "CC"
-        elif modeVal == 'P':
-            modeVal = "PCC"
-        elif modeVal == 'L':
-            modeVal = "Laplacian"
+    # search map
+    if modeVal == 'V':
+        modeVal = "VecProduct"
+    elif modeVal == 'O':
+        modeVal = "Overlap"
+    elif modeVal == 'C':
+        modeVal = "CC"
+    elif modeVal == 'P':
+        modeVal = "PCC"
+    elif modeVal == 'L':
+        modeVal = "Laplacian"
 
-        search_map_fft(mrc_N1, mrc_N2, TopN=topN, ang=angle_spacing, mode=modeVal, is_eval_mode=evalMode)
+    search_map_fft(mrc_N1, mrc_N2, TopN=topN, ang=angle_spacing, mode=modeVal, is_eval_mode=evalMode, showPDB=showPDB)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -139,12 +141,12 @@ if __name__ == "__main__":
         topN = args.N
 
         # necessary?
-        showPdb = args.S
+        showPDB = args.S
 
         modeVal = args.M
         evalMode = args.E
 
-        print(objA, objB, threshold1, threshold2, bandwidth, voxel_spacing, angle_spacing, topN, showPdb, modeVal,
+        print(objA, objB, threshold1, threshold2, bandwidth, voxel_spacing, angle_spacing, topN, showPDB, modeVal,
               evalMode)
 
         # construct mrc objects
@@ -194,7 +196,7 @@ if __name__ == "__main__":
         elif modeVal == 'L':
             modeVal = "Laplacian"
 
-        search_map_fft(mrc_N1, mrc_N2, TopN=topN, ang=angle_spacing, mode=modeVal, is_eval_mode=evalMode)
+        search_map_fft(mrc_N1, mrc_N2, TopN=topN, ang=angle_spacing, mode=modeVal, is_eval_mode=evalMode, showPDB=showPDB)
 
 
     elif args.command == 'prob':
@@ -231,7 +233,7 @@ if __name__ == "__main__":
         angle_spacing = args.A
         topN = args.N
 
-        #average and standard deviation
+        # average and standard deviation
         vave = args.vav
         vstd = args.vstd
         pave = args.pav
@@ -247,19 +249,26 @@ if __name__ == "__main__":
             pstd = -10
 
         # necessary?
-        showPdb = args.S
+        showPDB = args.S
 
         modeVal = args.M
         evalMode = args.E
 
         num_processors = args.P
 
-        print(objA, objB, probA, probB, threshold1, threshold2, bandwidth, voxel_spacing, angle_spacing, topN, showPdb,
+        print(objA, objB, probA, probB, threshold1, threshold2, bandwidth, voxel_spacing, angle_spacing, topN, showPDB,
               modeVal, evalMode, alpha, vave, vstd, pave, pstd)
 
         if alpha == 0.0:
-            alpha_is_zero(objA, objB, threshold1, threshold2, bandwidth, voxel_spacing, angle_spacing, topN, showPdb, modeVal,
-              evalMode)
+            alpha_is_zero(objA, objB,
+                          threshold1, threshold2,
+                          bandwidth,
+                          voxel_spacing,
+                          angle_spacing,
+                          topN,
+                          showPDB,
+                          modeVal,
+                          evalMode)
         else:
             prob_maps = np.load(npA)
             prob_maps_chain = np.load(npB)
@@ -312,7 +321,7 @@ if __name__ == "__main__":
             mrc_list = [mrc_N1, mrc_N2, mrc_N1_p1, mrc_N1_p2, mrc_N1_p3, mrc_N1_p4, mrc_N2_p1, mrc_N2_p2, mrc_N2_p3,
                         mrc_N2_p4]
             max_dim = np.max((mrc_N1.xdim, mrc_N2.xdim, mrc_N2_p1.xdim, mrc_N2_p2.xdim, mrc_N2_p3.xdim, mrc_N2_p4.xdim,
-                            mrc_N1_p1.xdim, mrc_N1_p2.xdim, mrc_N1_p3.xdim, mrc_N1_p4.xdim))
+                              mrc_N1_p1.xdim, mrc_N1_p2.xdim, mrc_N1_p3.xdim, mrc_N1_p4.xdim))
 
             # Unify dimensions in all maps
 
@@ -346,5 +355,7 @@ if __name__ == "__main__":
             search_map_fft_prob(mrc_N1_p1, mrc_N1_p2, mrc_N1_p3, mrc_N1_p4,
                                 mrc_N1, mrc_N2,
                                 mrc_N2_p1, mrc_N2_p2, mrc_N2_p3, mrc_N2_p4,
-                                ang=angle_spacing, alpha=alpha, TopN=topN, num_proc=num_processors, vave=vave, vstd=vstd,
-                                pave = pave, pstd = pstd)
+                                ang=angle_spacing, alpha=alpha, TopN=topN, num_proc=num_processors, vave=vave,
+                                vstd=vstd,
+                                pave=pave, pstd=pstd,
+                                showPDB=showPDB)
