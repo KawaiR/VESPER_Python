@@ -270,8 +270,9 @@ if __name__ == "__main__":
                           modeVal,
                           evalMode)
         else:
-            prob_maps = np.load(npA)
-            prob_maps_chain = np.load(npB)
+            # cast float64 to float32
+            prob_maps = np.load(npA).astype(np.float32)
+            prob_maps_chain = np.load(npB).astype(np.float32)
 
             mrc1 = mrc_obj(objA)
             mrc2 = mrc_obj(objB)
@@ -320,17 +321,14 @@ if __name__ == "__main__":
 
             mrc_list = [mrc_N1, mrc_N2, mrc_N1_p1, mrc_N1_p2, mrc_N1_p3, mrc_N1_p4, mrc_N2_p1, mrc_N2_p2, mrc_N2_p3,
                         mrc_N2_p4]
-            max_dim = np.max((mrc_N1.xdim, mrc_N2.xdim, mrc_N2_p1.xdim, mrc_N2_p2.xdim, mrc_N2_p3.xdim, mrc_N2_p4.xdim,
-                              mrc_N1_p1.xdim, mrc_N1_p2.xdim, mrc_N1_p3.xdim, mrc_N1_p4.xdim))
+            max_dim = np.max([mrc.xdim for mrc in mrc_list])
 
             # Unify dimensions in all maps
 
             for mrc in mrc_list:
                 if mrc.xdim != max_dim:
                     mrc.xdim = mrc.ydim = mrc.zdim = max_dim
-                    mrc.orig[0] = mrc.cent[0] - 0.5 * voxel_spacing * mrc.xdim
-                    mrc.orig[1] = mrc.cent[1] - 0.5 * voxel_spacing * mrc.xdim
-                    mrc.orig[2] = mrc.cent[2] - 0.5 * voxel_spacing * mrc.xdim
+                    mrc.orig = mrc.cent - 0.5 * voxel_spacing * mrc.xdim
 
             for mrc in mrc_list:
                 mrc.dens = np.zeros((max_dim ** 3, 1), dtype="float32")

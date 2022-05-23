@@ -1,16 +1,16 @@
 # coding: utf-8
-import concurrent.futures
+# import concurrent.futures
 import copy
 import mrcfile
 import multiprocessing
 import numba
 import numpy as np
-import os
+# import os
 import pyfftw
-import time
+# import time
 from datetime import datetime
 from pathlib import Path
-from scipy import ndimage
+# from scipy import ndimage
 from scipy.spatial.transform import Rotation as R
 from tqdm import tqdm
 
@@ -121,185 +121,6 @@ def mrc_set_vox_size(mrc, th=0.00, voxel_size=7.0):
     return mrc, mrc_new
 
 
-# @numba.jit(nopython=True)
-# def apply_kern(arr, kernel):
-#     """Jit compiled function to apply a kernel to a given array (element-wise product).
-#
-#     Args:
-#         arr (numpy.array): the array to apply the kernel on
-#         kernel (numpy.array): the kernel to be applied, should be the same shape as the input arr
-#
-#     Returns:
-#         dtotal (float): the total density
-#         filtered (numpy.array): the filtered array
-#     """
-#     filtered = np.multiply(arr, kernel)  # apply guassian kernel
-#     dtotal = np.sum(filtered)
-#     return dtotal, filtered
-#
-#
-# def gkern3d(l=5, sig=1.):
-#     """
-#     creates a 3D gaussian kernel with side length `l` and a sigma of `sig`
-#     """
-#     ax = np.linspace(-(l - 1) / 2., (l - 1) / 2., l)
-#     gauss = np.exp(-0.5 * np.square(ax) / np.square(sig))  # calculate gaussian kernel along 1d axis
-#     kernel = (gauss[..., None] * gauss)[..., None] * gauss  # out product to produce form 3d kernel
-#     kernel = kernel / np.sum(kernel)  # Normalization
-#     return kernel
-#
-#
-# def fastVEC(mrc_source, mrc_dest, dreso=16.0, calc_vec=True):
-#     """A function that resample the mrc object to preset voxel size and calculate the vector and other statistics
-#
-#     Args:
-#         mrc_source (mrc_obj): The source mrc_obj
-#         mrc_dest (mrc_obj): The destination mrc_obj
-#         dreso (float, optional): Gaussian kernel window size. Defaults to 16.0.
-#         calc_vec (bool, optional): Choose to calculate the vector or not, not required for simulated probability maps. Defaults to True.
-#
-#     Returns:
-#         mrc_dest (mrc_obj): converted mrc_obj
-#     """
-#
-#     print("#Start VEC")
-#     gstep = mrc_source.xwidth
-#     sigma = (dreso / gstep) * 0.3  # calculate the sigma value, 0.3 is an abitrary coefficient
-#     fmaxd = (dreso / gstep) * 2.0  # calculate filter maximum radius
-#     print("#maxd= {fmaxd}".format(fmaxd=fmaxd))
-#
-#     dsum = 0.0  # sum of all calculated density values
-#     Nact = 0  # non-zero density count
-#
-#     kernel_length = int(2 * np.ceil(fmaxd)) + 1  # calculate the kernel length
-#     g_kern = gkern3d(kernel_length, sigma)  # generate kernel
-#
-#     # iterate over the all the positions in the new grid
-#     for x in tqdm(range(mrc_dest.xdim)):
-#         for y in range(mrc_dest.ydim):
-#             for z in range(mrc_dest.zdim):
-#
-#                 xyz_arr = np.array((x, y, z))
-#
-#                 # find the center in the old grid
-#                 pos = (xyz_arr * mrc_dest.xwidth + mrc_dest.orig -
-#                        mrc_source.orig) / mrc_source.xwidth
-#
-#                 # calculate the index for 1d density vector representation
-#                 ind = mrc_dest.xdim * mrc_dest.ydim * z + mrc_dest.xdim * y + x
-#
-#                 # skip calculation if position is outside of the old grid
-#                 if (pos[0] < 0 or pos[1] < 0 or pos[2] < 0
-#                         or pos[0] >= mrc_source.xdim
-#                         or pos[1] >= mrc_source.ydim
-#                         or pos[2] >= mrc_source.zdim):
-#                     mrc_dest.dens[ind] = 0.0
-#                     mrc_dest.vec[x][y][z] = 0.0
-#                     continue
-#
-#                 # skip calculation if the old position has zero density
-#                 if mrc_source.data[int(pos[0])][int(pos[1])][int(pos[2])] == 0:
-#                     mrc_dest.dens[ind] = 0.0
-#                     mrc_dest.vec[x][y][z] = 0.0
-#                     continue
-#
-#                 # Start Point
-#                 stp = (pos - fmaxd).astype(np.int32)
-#
-#                 # End Point
-#                 endp = (pos + fmaxd + 1).astype(np.int32)
-#
-#                 # initialize padding flags
-#                 x_left_padding = False
-#                 y_left_padding = False
-#                 z_left_padding = False
-#
-#                 # set start and end point, add padding if applicable
-#                 if stp[0] < 0:
-#                     x_left_padding = True
-#                     stp[0] = 0
-#                 if stp[1] < 0:
-#                     y_left_padding = True
-#                     stp[1] = 0
-#                 if stp[2] < 0:
-#                     z_left_padding = True
-#                     stp[2] = 0
-#
-#                 if endp[0] > mrc_source.xdim:
-#                     endp[0] = mrc_source.xdim
-#                 if endp[1] > mrc_source.ydim:
-#                     endp[1] = mrc_source.ydim
-#                 if endp[2] > mrc_source.zdim:
-#                     endp[2] = mrc_source.zdim
-#                 # compute the total density
-#                 selected_region = mrc_source.data[stp[0]:endp[0], stp[1]:endp[1],
-#                                   stp[2]:endp[2]]  # select the region to be sampled in the original map
-#
-#                 padding = kernel_length - (endp - stp)  # calculate padding values
-#
-#                 kernel_x_range, kernel_y_range, kernel_z_range = [0, 0], [0, 0], [0,
-#                                                                                   0]  # init padding values to be all zeros
-#
-#                 # apply the directions for padding values
-#                 if padding[0] != 0:
-#                     if x_left_padding:
-#                         kernel_x_range = [padding[0], 0]
-#                     else:
-#                         kernel_x_range = [0, padding[0]]
-#                 if padding[1] != 0:
-#                     if y_left_padding:
-#                         kernel_y_range = [padding[1], 0]
-#                     else:
-#                         kernel_y_range = [0, padding[1]]
-#                 if padding[2] != 0:
-#                     if z_left_padding:
-#                         kernel_z_range = [padding[2], 0]
-#                     else:
-#                         kernel_z_range = [0, padding[2]]
-#
-#                 # apply padding to the selected region in old map
-#                 padded_region = np.pad(selected_region, (
-#                     (kernel_x_range[0], kernel_x_range[1]), (kernel_y_range[0], kernel_y_range[1]),
-#                     (kernel_z_range[0], kernel_z_range[1])))
-#
-#                 # apply the kernel to the padded array
-#                 dtotal, weighted_samples = apply_kern(padded_region, g_kern)
-#
-#                 # fill in the dens and data array
-#                 mrc_dest.dens[ind] = dtotal
-#                 mrc_dest.data[x][y][z] = dtotal
-#
-#                 # calculate the vector value using center_of_mass and normalize
-#                 if calc_vec:
-#                     vec = np.array(ndimage.center_of_mass(weighted_samples) - np.array([kernel_length] * 3) / 2.)
-#
-#                     if dtotal == 0:
-#                         mrc_dest.vec[x][y][z] = 0.0
-#                         continue
-#
-#                     normalized_v = vec / np.sqrt(np.sum(vec ** 2))  # normalization to unit vector
-#                     mrc_dest.vec[x][y][z] = normalized_v  # fill in the vector array in new map
-#
-#                 dsum += dtotal
-#                 Nact += 1
-#
-#     print("#End LDP")
-#     print(dsum)
-#     print(Nact)
-#
-#     mrc_dest.dsum = dsum
-#     mrc_dest.Nact = Nact
-#     mrc_dest.ave = dsum / float(Nact)
-#     mrc_dest.std = np.linalg.norm(mrc_dest.dens[mrc_dest.dens > 0])
-#     mrc_dest.std_norm_ave = np.linalg.norm(mrc_dest.dens[mrc_dest.dens > 0] -
-#                                            mrc_dest.ave)
-#
-#     print("#MAP AVE={ave} STD={std} STD_norm={std_norm}".format(
-#         ave=mrc_dest.ave, std=mrc_dest.std, std_norm=mrc_dest.std_norm_ave))
-#
-#     return mrc_dest
-
-
 @numba.jit(nopython=True)
 def calc(stp, endp, pos, mrc1_data, fsiv):
     dtotal = 0.0
@@ -324,8 +145,44 @@ def calc(stp, endp, pos, mrc1_data, fsiv):
     return dtotal, pos2
 
 
-def fastVEC(mrc_source, mrc_dest, dreso=16.0):
-    gstep = mrc_source.xwidth
+def fastVEC(src, dest, dreso=16.0):
+    src_xwidth = src.xwidth
+    src_orig = src.orig
+    src_dims = np.array((src.xdim, src.ydim, src.zdim))
+    dest_xwidth = dest.xwidth
+    dest_orig = dest.orig
+    dest_dims = np.array((dest.xdim, dest.ydim, dest.zdim))
+
+    dest_data, dest_vec = doFastVEC(src_xwidth, src_orig, src_dims, src.data,
+                                    dest_xwidth, dest_orig, dest_dims, dest.data, dest.vec,
+                                    dreso)
+
+    dsum = np.sum(dest_data)
+    Nact = np.count_nonzero(dest_data)
+    ave = np.mean(dest_data[dest_data > 0])
+    std = np.linalg.norm(dest_data[dest_data > 0])
+    std_norm_ave = np.linalg.norm(dest_data[dest_data > 0] - ave)
+
+    print("#MAP SUM={sum} COUNT={cnt} AVE={ave} STD={std} STD_norm={std_norm}".format(sum=dsum,
+                                                                                      cnt=Nact,
+                                                                                      ave=ave,
+                                                                                      std=std,
+                                                                                      std_norm=std_norm_ave))
+
+    dest.data = dest_data
+    dest.vec = dest_vec
+    dest.dsum = dsum
+    dest.Nact = Nact
+    dest.ave = ave
+    dest.std = std
+    dest.std_norm_ave = std_norm_ave
+
+    return dest
+
+
+def doFastVEC(src_xwidth, src_orig, src_dims, src_data, dest_xwidth, dest_orig, dest_dims, dest_data, dest_vec,
+              dreso=16.0):
+    gstep = src_xwidth
     fs = (dreso / gstep) * 0.5
     fs = fs ** 2
     fsiv = 1.0 / fs
@@ -333,12 +190,12 @@ def fastVEC(mrc_source, mrc_dest, dreso=16.0):
 
     # print("#maxd={fmaxd}".format(fmaxd=fmaxd), "#fsiv=" + str(fsiv))
 
-    for x in range(mrc_dest.xdim):
-        for y in range(mrc_dest.ydim):
-            for z in range(mrc_dest.zdim):
+    for x in range(dest_dims[0]):
+        for y in range(dest_dims[1]):
+            for z in range(dest_dims[2]):
 
                 xyz_arr = np.array((x, y, z))
-                pos = (xyz_arr * mrc_dest.xwidth + mrc_dest.orig - mrc_source.orig) / mrc_source.xwidth
+                pos = (xyz_arr * dest_xwidth + dest_orig - src_orig) / src_xwidth
 
                 # check density
 
@@ -346,13 +203,13 @@ def fastVEC(mrc_source, mrc_dest, dreso=16.0):
                         pos[0] < 0
                         or pos[1] < 0
                         or pos[2] < 0
-                        or pos[0] >= mrc_source.xdim
-                        or pos[1] >= mrc_source.ydim
-                        or pos[2] >= mrc_source.zdim
+                        or pos[0] >= src_dims[0]
+                        or pos[1] >= src_dims[1]
+                        or pos[2] >= src_dims[2]
                 ):
                     continue
 
-                if mrc_source.data[int(pos[0])][int(pos[1])][int(pos[2])] == 0:
+                if src_data[int(pos[0])][int(pos[1])][int(pos[2])] == 0:
                     continue
 
                 # Start Point
@@ -369,17 +226,17 @@ def fastVEC(mrc_source, mrc_dest, dreso=16.0):
                 # End Point
                 endp = (pos + fmaxd + 1).astype(np.int32)
 
-                if endp[0] >= mrc_source.xdim:
-                    endp[0] = mrc_source.xdim
-                if endp[1] >= mrc_source.ydim:
-                    endp[1] = mrc_source.ydim
-                if endp[2] >= mrc_source.zdim:
-                    endp[2] = mrc_source.zdim
+                if endp[0] >= src_dims[0]:
+                    endp[0] = src_dims[0]
+                if endp[1] >= src_dims[1]:
+                    endp[1] = src_dims[1]
+                if endp[2] >= src_dims[2]:
+                    endp[2] = src_dims[2]
 
                 # compute the total density
-                dtotal, pos2 = calc(stp, endp, pos, mrc_source.data, fsiv)
+                dtotal, pos2 = calc(stp, endp, pos, src_data, fsiv)
 
-                mrc_dest.data[x][y][z] = dtotal
+                dest_data[x][y][z] = dtotal
 
                 if dtotal == 0:
                     continue
@@ -397,21 +254,9 @@ def fastVEC(mrc_source, mrc_dest, dreso=16.0):
 
                 rdvec = 1.0 / dvec
 
-                mrc_dest.vec[x][y][z] = tmpcd * rdvec
+                dest_vec[x][y][z] = tmpcd * rdvec
 
-    mrc_dest.dsum = np.sum(mrc_dest.data)
-    mrc_dest.Nact = np.count_nonzero(mrc_dest.data)
-    mrc_dest.ave = np.mean(mrc_dest.data[mrc_dest.data > 0])
-    mrc_dest.std = np.linalg.norm(mrc_dest.data[mrc_dest.data > 0])
-    mrc_dest.std_norm_ave = np.linalg.norm(mrc_dest.data[mrc_dest.data > 0] - mrc_dest.ave)
-
-    print("#MAP SUM={sum} COUNT={cnt} AVE={ave} STD={std} STD_norm={std_norm}".format(sum=mrc_dest.dsum,
-                                                                                      cnt=mrc_dest.Nact,
-                                                                                      ave=mrc_dest.ave,
-                                                                                      std=mrc_dest.std,
-                                                                                      std_norm=mrc_dest.std_norm_ave))
-
-    return mrc_dest
+    return dest_data, dest_vec
 
 
 @numba.jit(nopython=True)
@@ -784,82 +629,32 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
         Z1 = np.fft.rfftn(z1)
         Z1 = np.conj(Z1)
 
-    x_angle = []
-    y_angle = []
-    z_angle = []
+    angle_comb = calc_angle_comb(ang)
 
-    i = 0
-    while i < 360:
-        x_angle.append(i)
-        y_angle.append(i)
-        i += ang
+    # init the target map vectors lists
 
-    i = 0
-    while i <= 180:
-        z_angle.append(i)
-        i += ang
+    if mode == "VecProduct":
+        target_list = [X1, Y1, Z1]
+    else:
+        target_list = [X1]
 
-    angle_comb = np.array(np.meshgrid(x_angle, y_angle, z_angle)).T.reshape(-1, 3)
-
-    # rot_vec_dict, rot_data_dict = rot_init_cuda(mrc_search.data, mrc_search.vec, angle_comb)
-
-    rot_vec_dict = {}
-    rot_data_dict = {}
-
-    # search process
-    for angle in angle_comb:
-        new_vec, new_data = rot_mrc(mrc_search.data, mrc_search.vec, angle)
-        rot_vec_dict[tuple(angle)] = new_vec
-        rot_data_dict[tuple(angle)] = new_data
-
-    # with concurrent.futures.ProcessPoolExecutor(max_workers=os.cpu_count() - 1) as executor:
-    #     trans_vec = {executor.submit(rot_mrc, mrc_search.data, mrc_search.vec, angle): angle for angle in angle_comb}
-    #     for future in concurrent.futures.as_completed(trans_vec):
-    #         angle = trans_vec[future]
-    #         rot_vec_dict[tuple(angle)] = future.result()[0]
-    #         rot_data_dict[tuple(angle)] = future.result()[1]
-
-    # fftw plans
-    a = pyfftw.empty_aligned((x1.shape), dtype="float32")
-    b = pyfftw.empty_aligned((a.shape[0], a.shape[1], a.shape[2] // 2 + 1), dtype="complex64")
-    c = pyfftw.empty_aligned((x1.shape), dtype="float32")
-
-    fft_object = pyfftw.FFTW(a, b, axes=(0, 1, 2))
-    ifft_object = pyfftw.FFTW(b, c, direction="FFTW_BACKWARD", axes=(0, 1, 2), normalise_idft=False)
+    print("###Start Searching###")
 
     angle_score = []
 
-    for angle in tqdm(angle_comb, desc="FFT Process"):
-        rot_mrc_vec = rot_vec_dict[tuple(angle)]
-        rot_mrc_data = rot_data_dict[tuple(angle)]
-
-        if mode == "VecProduct":
-
-            x2 = copy.deepcopy(rot_mrc_vec[..., 0])
-            y2 = copy.deepcopy(rot_mrc_vec[..., 1])
-            z2 = copy.deepcopy(rot_mrc_vec[..., 2])
-
-            target_list = [X1, Y1, Z1]
-            query_list = [x2, y2, z2]
-
-            fft_result_list = fft_search_best_dot(target_list, query_list, a, b, c, fft_object, ifft_object)
-
-            best, trans = find_best_trans_list(fft_result_list)
-
-        else:
-            best, trans = fft_search_score_trans_1d(
-                X1, rot_mrc_data, a, b, fft_object, ifft_object, mode, mrc_target.ave
-            )
-            if mode == "CC":
-                rstd2 = 1.0 / mrc_target.std ** 2
-                best = best * rstd2
-            if mode == "PCC":
-                rstd3 = 1.0 / mrc_target.std_norm_ave ** 2
-                best = best * rstd3
-
-        angle_score.append({"angle": tuple(angle),
-                            "vec_score": best * rd3,
-                            "vec_trans": trans})
+    # search process
+    for angle in tqdm(angle_comb):
+        vec_score, vec_trans, _, _ = rot_and_search_fft(mrc_search.data,
+                                                        mrc_search.vec,
+                                                        angle,
+                                                        target_list,
+                                                        mrc_target,
+                                                        mode=mode)
+        angle_score.append({
+            "angle": angle,
+            "vec_score": vec_score * rd3,
+            "vec_trans": vec_trans
+        })
 
     # calculate the ave and std
     score_arr = np.array([row["vec_score"] for row in angle_score])
@@ -929,42 +724,18 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
         #         rot_data_dict[tuple(angle)] = future.result()[1]
 
         for angle in tqdm(refine_ang_arr, desc="Refining Rotation"):
-            vec, data = rot_mrc(mrc_search.data, mrc_search.vec, angle)
-            rot_vec_dict[tuple(angle)] = vec
-            rot_data_dict[tuple(angle)] = data
-
-        for angle in tqdm(refine_ang_arr, desc="Refining FFT"):
-
-            rot_mrc_vec = rot_vec_dict[tuple(angle)]
-            rot_mrc_data = rot_data_dict[tuple(angle)]
-
-            if mode == "VecProduct":
-                x2 = copy.deepcopy(rot_mrc_vec[..., 0])
-                y2 = copy.deepcopy(rot_mrc_vec[..., 1])
-                z2 = copy.deepcopy(rot_mrc_vec[..., 2])
-
-                target_list = [X1, Y1, Z1]
-                query_list = [x2, y2, z2]
-
-                fft_result_list = fft_search_best_dot(target_list, query_list, a, b, c, fft_object, ifft_object)
-                best, trans = find_best_trans_list(fft_result_list)
-
-            else:
-                best, trans = fft_search_score_trans_1d(
-                    X1, rot_mrc_data, a, b, fft_object, ifft_object, mode, mrc_target.ave
-                )
-                if mode == "CC":
-                    rstd2 = 1.0 / mrc_target.std ** 2
-                    best = best * rstd2
-                if mode == "PCC":
-                    rstd3 = 1.0 / mrc_target.std_norm_ave ** 2
-                    best = best * rstd3
+            vec_score, vec_trans, new_vec, new_data = rot_and_search_fft(mrc_search.data,
+                                                                         mrc_search.vec,
+                                                                         angle,
+                                                                         target_list,
+                                                                         mrc_target,
+                                                                         mode=mode)
 
             refined_score.append({"angle": tuple(angle),
-                                  "vec_score": best * rd3,
-                                  "vec_trans": trans,
-                                  "vec": rot_mrc_vec,
-                                  "data": rot_mrc_data})
+                                  "vec_score": vec_score * rd3,
+                                  "vec_trans": vec_trans,
+                                  "vec": new_vec,
+                                  "data": new_data})
 
         # sort the list to find the TopN with best scores
         refined_list = sorted(refined_score, key=lambda x: x["vec_score"], reverse=True)[:TopN]
@@ -1099,17 +870,19 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
 
     angle_score = []
 
-    if (vave < 0 or vstd < 0 or pstd < 0 or pave < 0):
+    if vave >= 0 and vstd >= 0 and pstd >= 0 and pave >= 0:
+        pass
+    else:
         for angle in tqdm(angle_comb):
-            vec_score, vec_trans, prob_score, prob_trans, _, _ = rot_and_search_fft(mrc_search.data,
-                                                                                    mrc_search.vec,
-                                                                                    mrc_search_p1.data,
-                                                                                    mrc_search_p2.data,
-                                                                                    mrc_search_p3.data,
-                                                                                    mrc_search_p4.data,
-                                                                                    angle,
-                                                                                    target_list,
-                                                                                    alpha=0.0)
+            vec_score, vec_trans, prob_score, prob_trans, _, _ = rot_and_search_fft_prob(mrc_search.data,
+                                                                                         mrc_search.vec,
+                                                                                         mrc_search_p1.data,
+                                                                                         mrc_search_p2.data,
+                                                                                         mrc_search_p3.data,
+                                                                                         mrc_search_p4.data,
+                                                                                         angle,
+                                                                                         target_list,
+                                                                                         alpha=0.0)
             angle_score.append({
                 "angle": angle,
                 "vec_score": vec_score * rd3,
@@ -1118,9 +891,10 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
                 "prob_trans": prob_trans
             })
 
+        # multiprocessing version
         # with concurrent.futures.ProcessPoolExecutor(max_workers=num_proc) as executor:
         #     rets = {
-        #         executor.submit(rot_and_search_fft,
+        #         executor.submit(rot_and_search_fft_prob,
         #                         mrc_search.data,
         #                         mrc_search.vec,
         #                         mrc_search_p1.data,
@@ -1155,17 +929,18 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
     angle_score = []
 
     for angle in tqdm(angle_comb):
-        vec_score, vec_trans, prob_score, prob_trans, mixed_score, mixed_trans = rot_and_search_fft(mrc_search.data,
-                                                                                                    mrc_search.vec,
-                                                                                                    mrc_search_p1.data,
-                                                                                                    mrc_search_p2.data,
-                                                                                                    mrc_search_p3.data,
-                                                                                                    mrc_search_p4.data,
-                                                                                                    angle,
-                                                                                                    target_list,
-                                                                                                    alpha,
-                                                                                                    vstd, vave, pstd,
-                                                                                                    pave)
+        vec_score, vec_trans, prob_score, prob_trans, mixed_score, mixed_trans = rot_and_search_fft_prob(
+            mrc_search.data,
+            mrc_search.vec,
+            mrc_search_p1.data,
+            mrc_search_p2.data,
+            mrc_search_p3.data,
+            mrc_search_p4.data,
+            angle,
+            target_list,
+            alpha,
+            vstd, vave, pstd,
+            pave)
 
         if mixed_score is None:
             mixed_score = 0
@@ -1221,6 +996,7 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
         # Search for +5.0 and -5.0 degree rotation.
         print("\n###Start Refining###")
 
+        refine_ang_list = []
         for result_mrc in sorted_topN:
             ang = result_mrc["angle"]
             ang_list = np.array(
@@ -1231,69 +1007,80 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
                 )
             ).T.reshape(-1, 3)
 
-            for ang in ang_list:
-                rotated = rot_mrc_prob(mrc_search.data, mrc_search.vec, mrc_search_p1.data, mrc_search_p2.data,
-                                       mrc_search_p3.data, mrc_search_p4.data, ang)
+            # remove duplicates
+            ang_list = ang_list[(ang_list[:, 0] < 360) &
+                                (ang_list[:, 1] < 360) &
+                                (ang_list[:, 2] < 180)]
 
-                rotated_vec = rotated[0]
-                rotated_data = rotated[1]
+            ang_list[ang_list < 0] += 360
 
-                x2 = rotated_vec[..., 0]
-                y2 = rotated_vec[..., 1]
-                z2 = rotated_vec[..., 2]
+            refine_ang_list.append(ang_list)
 
-                p21 = rotated[2]
-                p22 = rotated[3]
-                p23 = rotated[4]
-                p24 = rotated[5]
+        refine_ang_list = np.concatenate(refine_ang_list, axis=0)
 
-                target_list = [X1, Y1, Z1, P1, P2, P3, P4]
-                query_list_vec = [x2, y2, z2]
-                query_list_prob = [p21, p22, p23, p24]
+        for ang in refine_ang_list:
+            rotated = rot_mrc_prob(mrc_search.data, mrc_search.vec, mrc_search_p1.data, mrc_search_p2.data,
+                                   mrc_search_p3.data, mrc_search_p4.data, ang)
 
-                # fftw plans
-                a = pyfftw.empty_aligned((x2.shape), dtype="float32")
-                b = pyfftw.empty_aligned((a.shape[0], a.shape[1], a.shape[2] // 2 + 1), dtype="complex64")
-                c = pyfftw.empty_aligned((x2.shape), dtype="float32")
+            rotated_vec = rotated[0]
+            rotated_data = rotated[1]
 
-                fft_object = pyfftw.FFTW(a, b, axes=(0, 1, 2))
-                ifft_object = pyfftw.FFTW(b, c, direction="FFTW_BACKWARD", axes=(0, 1, 2), normalise_idft=False)
+            x2 = rotated_vec[..., 0]
+            y2 = rotated_vec[..., 1]
+            z2 = rotated_vec[..., 2]
 
-                # Search for best translation using FFT
-                fft_result_list_vec = fft_search_best_dot(target_list[:3], query_list_vec, a, b, c, fft_object,
-                                                          ifft_object)
-                fft_result_list_prob = fft_search_best_dot(target_list[3:], query_list_prob, a, b, c, fft_object,
-                                                           ifft_object)
+            p21 = rotated[2]
+            p22 = rotated[3]
+            p23 = rotated[4]
+            p24 = rotated[5]
 
-                vec_score, vec_trans = find_best_trans_list(fft_result_list_vec)
-                prob_score, prob_trans = find_best_trans_list(fft_result_list_prob)
+            target_list = [X1, Y1, Z1, P1, P2, P3, P4]
+            query_list_vec = [x2, y2, z2]
+            query_list_prob = [p21, p22, p23, p24]
 
-                mixed_score = 0
-                mixed_trans = []
+            # fftw plans
+            a = pyfftw.empty_aligned((x2.shape), dtype="float32")
+            b = pyfftw.empty_aligned((a.shape[0], a.shape[1], a.shape[2] // 2 + 1), dtype="complex64")
+            c = pyfftw.empty_aligned((x2.shape), dtype="float32")
 
-                mixed_score, mixed_trans = find_best_trans_mixed(fft_result_list_vec,
-                                                                 fft_result_list_prob,
-                                                                 alpha,
-                                                                 vstd, vave,
-                                                                 pstd, pave)
+            fft_object = pyfftw.FFTW(a, b, axes=(0, 1, 2))
+            ifft_object = pyfftw.FFTW(b, c, direction="FFTW_BACKWARD", axes=(0, 1, 2), normalise_idft=False)
 
-                refined_score.append(
-                    {"angle": tuple(ang),
-                     "vec_score": vec_score * rd3,
-                     "vec_trans": vec_trans,
-                     "vec": rotated_vec,
-                     "data": rotated_data,
-                     "prob_score": prob_score * rd3,
-                     "prob_trans": prob_trans,
-                     "mixed_score": mixed_score * rd3,
-                     "mixed_trans": mixed_trans})
+            # Search for best translation using FFT
+            fft_result_list_vec = fft_search_best_dot(target_list[:3], query_list_vec, a, b, c, fft_object,
+                                                      ifft_object)
+            fft_result_list_prob = fft_search_best_dot(target_list[3:], query_list_prob, a, b, c, fft_object,
+                                                       ifft_object)
+
+            vec_score, vec_trans = find_best_trans_list(fft_result_list_vec)
+            prob_score, prob_trans = find_best_trans_list(fft_result_list_prob)
+
+            mixed_score = 0
+            mixed_trans = []
+
+            mixed_score, mixed_trans = find_best_trans_mixed(fft_result_list_vec,
+                                                             fft_result_list_prob,
+                                                             alpha,
+                                                             vstd, vave,
+                                                             pstd, pave)
+
+            refined_score.append(
+                {"angle": tuple(ang),
+                 "vec_score": vec_score * rd3,
+                 "vec_trans": vec_trans,
+                 "vec": rotated_vec,
+                 "data": rotated_data,
+                 "prob_score": prob_score * rd3,
+                 "prob_trans": prob_trans,
+                 "mixed_score": mixed_score * rd3,
+                 "mixed_trans": mixed_trans})
 
         refined_list = sorted(refined_score, key=lambda x: x["mixed_score"], reverse=True)[:TopN]  # Sort by mixed score
     else:
         refined_list = sorted_topN
 
     if showPDB:
-    # Write result to PDB files
+        # Write result to PDB files
         folder_path = Path.cwd() / ("VESPER_RUN_" + datetime.now().strftime('%m%d_%H%M'))
         Path.mkdir(folder_path)
         print("###Writing results to PDB files###")
@@ -1621,12 +1408,56 @@ def calc_angle_comb(ang_interval):
     return angle_comb
 
 
-def rot_and_search_fft(data, vec,
-                       dp1, dp2, dp3, dp4,
-                       angle,
-                       target_list,
-                       alpha,
-                       vstd=None, vave=None, pstd=None, pave=None):
+def rot_and_search_fft(data, vec, angle, target_list, mrc_target, mode="VecProduct"):
+    # Rotate the query map and vector representation
+    new_vec, new_data = rot_mrc(data, vec, angle)
+
+    # fftw plans initialization
+    a = pyfftw.empty_aligned(new_vec[..., 0].shape, dtype="float32")
+    b = pyfftw.empty_aligned((a.shape[0], a.shape[1], a.shape[2] // 2 + 1), dtype="complex64")
+    c = pyfftw.empty_aligned(new_vec[..., 0].shape, dtype="float32")
+
+    fft_object = pyfftw.FFTW(a, b, axes=(0, 1, 2))
+    ifft_object = pyfftw.FFTW(b, c, direction="FFTW_BACKWARD", axes=(0, 1, 2), normalise_idft=False)
+
+    if mode == "VecProduct":
+
+        # Compose the query FFT list
+
+        x2 = new_vec[..., 0]
+        y2 = new_vec[..., 1]
+        z2 = new_vec[..., 2]
+
+        query_list_vec = [x2, y2, z2]
+
+        # Search for best translation using FFT
+        fft_result_list_vec = fft_search_best_dot(target_list[:3], query_list_vec, a, b, c, fft_object, ifft_object)
+
+        vec_score, vec_trans = find_best_trans_list(fft_result_list_vec)
+
+    else:
+
+        vec_score, vec_trans = fft_search_score_trans_1d(target_list[0],
+                                                         new_data, a, b,
+                                                         fft_object, ifft_object, mode,
+                                                         mrc_target.ave)
+
+        if mode == "CC":
+            rstd2 = 1.0 / mrc_target.std ** 2
+            vec_score = vec_score * rstd2
+        if mode == "PCC":
+            rstd3 = 1.0 / mrc_target.std_norm_ave ** 2
+            vec_score = vec_score * rstd3
+
+    return vec_score, vec_trans, new_vec, new_data
+
+
+def rot_and_search_fft_prob(data, vec,
+                            dp1, dp2, dp3, dp4,
+                            angle,
+                            target_list,
+                            alpha,
+                            vstd=None, vave=None, pstd=None, pave=None):
     """ Calculate the best translation for the query map given a rotation angle
 
     Args:
@@ -1649,15 +1480,6 @@ def rot_and_search_fft(data, vec,
         data, vec, dp1, dp2, dp3, dp4, angle)
 
     # Compose the query FFT list
-
-    # x2 = copy.deepcopy(new_vec_array[..., 0])
-    # y2 = copy.deepcopy(new_vec_array[..., 1])
-    # z2 = copy.deepcopy(new_vec_array[..., 2])
-    #
-    # p21 = copy.deepcopy(new_data_array_p1)
-    # p22 = copy.deepcopy(new_data_array_p2)
-    # p23 = copy.deepcopy(new_data_array_p3)
-    # p24 = copy.deepcopy(new_data_array_p4)
 
     x2 = new_vec_array[..., 0]
     y2 = new_vec_array[..., 1]
