@@ -61,7 +61,8 @@ def alpha_is_zero(objA, objB, threshold1, threshold2, bandwidth, voxel_spacing, 
     elif modeVal == 'L':
         modeVal = "Laplacian"
 
-    search_map_fft(mrc_N1, mrc_N2, TopN=topN, ang=angle_spacing, mode=modeVal, is_eval_mode=evalMode, showPDB=showPDB)
+    search_map_fft(mrc_N1, mrc_N2, TopN=topN, ang=angle_spacing, mode=modeVal, is_eval_mode=evalMode, showPDB=showPDB,
+                   folder=folder)
 
 
 if __name__ == "__main__":
@@ -88,6 +89,7 @@ if __name__ == "__main__":
                                                         'P: Pearson Correlation Coefficient Mode\n' +
                                                         'L: Laplacian Filtering Mode')
     orig.add_argument('-E', type=bool, default=False, help='Evaluation mode of the current position def=false')
+    orig.add_argument('-o', type=str, default=None, help='Output folder name')
 
     # secondary structure matching menu
     prob.add_argument('-a', type=str, required=True, help='MAP1.mrc (large)')
@@ -115,10 +117,14 @@ if __name__ == "__main__":
     prob.add_argument('-vstd', type=float, help='Pre-computed standard deviation for density map')
     prob.add_argument('-pav', type=float, help='Pre-computed average for probability map')
     prob.add_argument('-pstd', type=float, help='Pre-computed standard deviation for probability map')
+    prob.add_argument('-o', type=str, default=None, help='Output folder name')
 
     args = parser.parse_args()
 
     if args.command == 'orig':
+        # output folder
+        folder = args.o
+
         # mrc file paths
         objA = args.a
         objB = args.b
@@ -196,10 +202,14 @@ if __name__ == "__main__":
         elif modeVal == 'L':
             modeVal = "Laplacian"
 
-        search_map_fft(mrc_N1, mrc_N2, TopN=topN, ang=angle_spacing, mode=modeVal, is_eval_mode=evalMode, showPDB=showPDB)
+        search_map_fft(mrc_N1, mrc_N2, TopN=topN, ang=angle_spacing, mode=modeVal, is_eval_mode=evalMode,
+                       showPDB=showPDB, folder=folder)
 
 
     elif args.command == 'prob':
+        # output folder
+        folder = args.o
+
         # mrc file paths
         objA = args.a
         objB = args.b
@@ -356,4 +366,5 @@ if __name__ == "__main__":
                                 ang=angle_spacing, alpha=alpha, TopN=topN, num_proc=num_processors, vave=vave,
                                 vstd=vstd,
                                 pave=pave, pstd=pstd,
-                                showPDB=showPDB)
+                                showPDB=showPDB,
+                                folder=folder)

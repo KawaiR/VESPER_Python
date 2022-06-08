@@ -5,12 +5,9 @@ import mrcfile
 import multiprocessing
 import numba
 import numpy as np
-# import os
 import pyfftw
-# import time
 from datetime import datetime
 from pathlib import Path
-# from scipy import ndimage
 from scipy.spatial.transform import Rotation as R
 from tqdm import tqdm
 
@@ -180,6 +177,7 @@ def fastVEC(src, dest, dreso=16.0):
     return dest
 
 
+@numba.jit(nopython=True)
 def doFastVEC(src_xwidth, src_orig, src_dims, src_data, dest_xwidth, dest_orig, dest_dims, dest_data, dest_vec,
               dreso=16.0):
     gstep = src_xwidth
@@ -568,7 +566,7 @@ def fft_search_score_trans_1d(target_X, search_data, a, b, fft_object, ifft_obje
 
 
 def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", is_eval_mode=False, save_path=".",
-                   showPDB=False):
+                   showPDB=False, folder=None):
     """The main search function for fining the best superimposition for the target and the query map.
 
     Args:
@@ -746,7 +744,10 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
 
     # Write result to PDB files
     if showPDB:
-        folder_path = Path.cwd() / ("VESPER_RUN_" + datetime.now().strftime('%m%d_%H%M%S'))
+        if folder is not None:
+            folder_path = Path.cwd() / folder
+        else:
+            folder_path = Path.cwd() / ("VESPER_RUN_" + datetime.now().strftime('%m%d_%H%M'))
         Path.mkdir(folder_path)
         print("\n###Writing results to PDB files###")
     else:
@@ -797,7 +798,10 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
 def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
                         mrc_target, mrc_search,
                         mrc_search_p1, mrc_search_p2, mrc_search_p3, mrc_search_p4,
-                        ang, alpha=0.0, TopN=10, num_proc=4, vave=-10, vstd=-10, pave=-10, pstd=-10, showPDB=False):
+                        ang, alpha=0.0, TopN=10, num_proc=4,
+                        vave=-10, vstd=-10, pave=-10, pstd=-10,
+                        showPDB=False,
+                        folder=None):
     """The main search function for fining the best superimposition for the target and the query map.
 
     Args:
@@ -1081,7 +1085,10 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
 
     if showPDB:
         # Write result to PDB files
-        folder_path = Path.cwd() / ("VESPER_RUN_" + datetime.now().strftime('%m%d_%H%M'))
+        if folder is not None:
+            folder_path = Path.cwd() / folder
+        else:
+            folder_path = Path.cwd() / ("VESPER_RUN_" + datetime.now().strftime('%m%d_%H%M'))
         Path.mkdir(folder_path)
         print("###Writing results to PDB files###")
     else:
