@@ -142,7 +142,19 @@ def calc(stp, endp, pos, mrc1_data, fsiv):
     return dtotal, pos2
 
 
-def fastVEC(src, dest, dreso=16.0):
+@numba.jit(nopython=True)
+def calc_avg(stp, endp, prob_data, mrc_data):
+    selected = prob_data[stp[0]:endp[0], stp[1]:endp[1], stp[2]:endp[2]]
+    weights = mrc_data[stp[0]:endp[0], stp[1]:endp[1], stp[2]:endp[2]]
+    dtotal = np.average(selected, weights=weights)
+    return dtotal
+
+
+def fastVEC(src, dest, dreso=16.0, prob_map=False, density_map=None):
+    if prob_map is True and density_map is None:
+        print("Error: density_map is not defined")
+        exit(-1)
+
     src_xwidth = src.xwidth
     src_orig = src.orig
     src_dims = np.array((src.xdim, src.ydim, src.zdim))
@@ -150,9 +162,8 @@ def fastVEC(src, dest, dreso=16.0):
     dest_orig = dest.orig
     dest_dims = np.array((dest.xdim, dest.ydim, dest.zdim))
 
-    dest_data, dest_vec = doFastVEC(src_xwidth, src_orig, src_dims, src.data,
-                                    dest_xwidth, dest_orig, dest_dims, dest.data, dest.vec,
-                                    dreso)
+    dest_data, dest_vec = doFastVEC(src_xwidth.item(), src_orig, src_dims, src.data, dest_xwidth, dest_orig, dest_dims,
+                                    dest.vec, dest.data, dreso, prob_map, density_map)
 
     dsum = np.sum(dest_data)
     Nact = np.count_nonzero(dest_data)
@@ -177,9 +188,12 @@ def fastVEC(src, dest, dreso=16.0):
     return dest
 
 
-@numba.jit(nopython=True)
-def doFastVEC(src_xwidth, src_orig, src_dims, src_data, dest_xwidth, dest_orig, dest_dims, dest_data, dest_vec,
-              dreso=16.0):
+@numba.njit((numba.float64, numba.float32[:], numba.int64[:], numba.float32[:, :, :], numba.float64, numba.float64[:],
+             numba.int64[:], numba.float32[:, :, :, :], numba.float32[:, :, :], numba.float64, numba.boolean,
+             numba.float32[:, :, :]), parallel=True)
+def doFastVEC(src_xwidth, src_orig, src_dims, src_data,
+              dest_xwidth, dest_orig, dest_dims, dest_vec, dest_data,
+              dreso=16.0, prob_map=False, density_map=None):
     gstep = src_xwidth
     fs = (dreso / gstep) * 0.5
     fs = fs ** 2
@@ -231,28 +245,26 @@ def doFastVEC(src_xwidth, src_orig, src_dims, src_data, dest_xwidth, dest_orig, 
                 if endp[2] >= src_dims[2]:
                     endp[2] = src_dims[2]
 
-                # compute the total density
-                dtotal, pos2 = calc(stp, endp, pos, src_data, fsiv)
+                if prob_map:
+                    dest_data[x][y][z] = calc_avg(stp, endp, src_data, density_map)
+                else:
+                    # compute the total density
+                    dtotal, pos2 = calc(stp, endp, pos, src_data, fsiv)
+                    dest_data[x][y][z] = dtotal
+                    if dtotal == 0:
+                        continue
 
-                dest_data[x][y][z] = dtotal
+                    rd = 1.0 / dtotal
+                    pos2 *= rd
+                    tmpcd = pos2 - pos
+                    dvec = np.sqrt(tmpcd[0] ** 2 + tmpcd[1] ** 2 + tmpcd[2] ** 2)
 
-                if dtotal == 0:
-                    continue
+                    if dvec == 0:
+                        dvec = 1.0
 
-                rd = 1.0 / dtotal
+                    rdvec = 1.0 / dvec
 
-                pos2 *= rd
-
-                tmpcd = pos2 - pos
-
-                dvec = np.sqrt(tmpcd[0] ** 2 + tmpcd[1] ** 2 + tmpcd[2] ** 2)
-
-                if dvec == 0:
-                    dvec = 1.0
-
-                rdvec = 1.0 / dvec
-
-                dest_vec[x][y][z] = tmpcd * rdvec
+                    dest_vec[x][y][z] = tmpcd * rdvec
 
     return dest_data, dest_vec
 
@@ -1209,8 +1221,9 @@ def show_vec(origin,
 
 
 @numba.jit(nopython=False, forceobj=True)
-def rot_mrc_prob(orig_mrc_data, orig_mrc_vec, mrc_search_p1_data, mrc_search_p2_data, mrc_search_p3_data,
-                 mrc_search_p4_data, angle):
+def rot_mrc_prob(orig_mrc_data, orig_mrc_vec,
+                 mrc_search_p1_data, mrc_search_p2_data, mrc_search_p3_data, mrc_search_p4_data,
+                 angle):
     dim = orig_mrc_vec.shape[0]
 
     new_pos = np.array(np.meshgrid(np.arange(dim), np.arange(dim), np.arange(dim), )).T.reshape(-1, 3)
@@ -1220,7 +1233,6 @@ def rot_mrc_prob(orig_mrc_data, orig_mrc_vec, mrc_search_p1_data, mrc_search_p2_
 
     r = R.from_euler("ZYX", angle, degrees=True)
     mtx = r.as_matrix()
-    mtx[np.isclose(mtx, 0, atol=1e-15)] = 0
 
     old_pos = rot_pos_mtx(np.flip(mtx).T, new_pos) + cent
 
