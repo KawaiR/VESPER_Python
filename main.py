@@ -1,53 +1,45 @@
 import argparse
-import concurrent.futures
-import copy
-import csv
-import math
 
-import mrcfile
-import multiprocessing
-import numba
-import numpy as np
-import os
-import pyfftw
-import scipy.fft
-from VESPER_1_prob_new import *
+from search import *
+from utils import mrc_set_vox_size, fastVEC
 
 
 def alpha_is_zero(objA, objB, threshold1, threshold2, bandwidth, voxel_spacing, angle_spacing, topN, showPDB, modeVal,
                   evalMode):
+
     # construct mrc objects
-    mrc1 = mrc_obj(objA)
-    mrc2 = mrc_obj(objB)
+    mrc1 = MrcObj(objA)
+    mrc2 = MrcObj(objB)
 
     # set voxel size
-    mrc1, mrc_N1 = mrc_set_vox_size(mrc1, threshold1, voxel_spacing)
-    mrc2, mrc_N2 = mrc_set_vox_size(mrc2, threshold2, voxel_spacing)
+    mrc1, tgt_map_resampled = mrc_set_vox_size(mrc1, threshold1, voxel_spacing)
+    mrc2, input_map_resampled = mrc_set_vox_size(mrc2, threshold2, voxel_spacing)
 
-    if mrc_N1.xdim > mrc_N2.xdim:
-        dim = mrc_N2.xdim = mrc_N2.ydim = mrc_N2.zdim = mrc_N1.xdim
+    if tgt_map_resampled.xdim > input_map_resampled.xdim:
+        dim = input_map_resampled.xdim = input_map_resampled.ydim = input_map_resampled.zdim = tgt_map_resampled.xdim
 
-        mrc_N2.orig[0] = mrc_N2.cent[0] - 0.5 * voxel_spacing * mrc_N2.xdim
-        mrc_N2.orig[1] = mrc_N2.cent[1] - 0.5 * voxel_spacing * mrc_N2.xdim
-        mrc_N2.orig[2] = mrc_N2.cent[2] - 0.5 * voxel_spacing * mrc_N2.xdim
+        input_map_resampled.orig[0] = input_map_resampled.cent[0] - 0.5 * voxel_spacing * input_map_resampled.xdim
+        input_map_resampled.orig[1] = input_map_resampled.cent[1] - 0.5 * voxel_spacing * input_map_resampled.xdim
+        input_map_resampled.orig[2] = input_map_resampled.cent[2] - 0.5 * voxel_spacing * input_map_resampled.xdim
 
     else:
-        dim = mrc_N1.xdim = mrc_N1.ydim = mrc_N1.zdim = mrc_N2.xdim
+        dim = tgt_map_resampled.xdim = tgt_map_resampled.ydim = tgt_map_resampled.zdim = input_map_resampled.xdim
 
-        mrc_N1.orig[0] = mrc_N1.cent[0] - 0.5 * voxel_spacing * mrc_N1.xdim
-        mrc_N1.orig[1] = mrc_N1.cent[1] - 0.5 * voxel_spacing * mrc_N1.xdim
-        mrc_N1.orig[2] = mrc_N1.cent[2] - 0.5 * voxel_spacing * mrc_N1.xdim
+        tgt_map_resampled.orig[0] = tgt_map_resampled.cent[0] - 0.5 * voxel_spacing * tgt_map_resampled.xdim
+        tgt_map_resampled.orig[1] = tgt_map_resampled.cent[1] - 0.5 * voxel_spacing * tgt_map_resampled.xdim
+        tgt_map_resampled.orig[2] = tgt_map_resampled.cent[2] - 0.5 * voxel_spacing * tgt_map_resampled.xdim
 
-    mrc_N1.dens = np.zeros((dim ** 3, 1))
-    mrc_N1.vec = np.zeros((dim, dim, dim, 3), dtype="float32")
-    mrc_N1.data = np.zeros((dim, dim, dim))
-    mrc_N2.dens = np.zeros((dim ** 3, 1))
-    mrc_N2.vec = np.zeros((dim, dim, dim, 3), dtype="float32")
-    mrc_N2.data = np.zeros((dim, dim, dim))
+    tgt_map_resampled.dens = np.zeros((dim ** 3, 1), dtype="float32")
+    tgt_map_resampled.vec = np.zeros((dim, dim, dim, 3), dtype="float32")
+    tgt_map_resampled.data = np.zeros((dim, dim, dim), dtype="float32")
+
+    input_map_resampled.dens = np.zeros((dim ** 3, 1), dtype="float32")
+    input_map_resampled.vec = np.zeros((dim, dim, dim, 3), dtype="float32")
+    input_map_resampled.data = np.zeros((dim, dim, dim), dtype="float32")
 
     # fastVEC
-    mrc_N1 = fastVEC(mrc1, mrc_N1, bandwidth)
-    mrc_N2 = fastVEC(mrc2, mrc_N2, bandwidth)
+    tgt_map_resampled = fastVEC(mrc1, tgt_map_resampled, bandwidth)
+    input_map_resampled = fastVEC(mrc2, input_map_resampled, bandwidth)
 
     # search map
     if modeVal == 'V':
@@ -61,7 +53,7 @@ def alpha_is_zero(objA, objB, threshold1, threshold2, bandwidth, voxel_spacing, 
     elif modeVal == 'L':
         modeVal = "Laplacian"
 
-    search_map_fft(mrc_N1, mrc_N2, TopN=topN, ang=angle_spacing, mode=modeVal, is_eval_mode=evalMode, showPDB=showPDB,
+    search_map_fft(tgt_map_resampled, input_map_resampled, TopN=topN, ang=angle_spacing, mode=modeVal, is_eval_mode=evalMode, showPDB=showPDB,
                    folder=folder)
 
 
@@ -156,8 +148,8 @@ if __name__ == "__main__":
               evalMode)
 
         # construct mrc objects
-        mrc1 = mrc_obj(objA)
-        mrc2 = mrc_obj(objB)
+        mrc1 = MrcObj(objA)
+        mrc2 = MrcObj(objB)
 
         # set voxel size
         mrc1, mrc_N1 = mrc_set_vox_size(mrc1, threshold1, voxel_spacing)
@@ -284,20 +276,20 @@ if __name__ == "__main__":
             prob_maps = np.load(npA).astype(np.float32)
             prob_maps_chain = np.load(npB).astype(np.float32)
 
-            mrc1 = mrc_obj(objA)
-            mrc2 = mrc_obj(objB)
+            mrc1 = MrcObj(objA)
+            mrc2 = MrcObj(objB)
 
             # probability MRCs
 
-            mrc1_p1 = mrc_obj(objA)
-            mrc1_p2 = mrc_obj(objA)
-            mrc1_p3 = mrc_obj(objA)
-            mrc1_p4 = mrc_obj(objA)
+            mrc1_p1 = MrcObj(objA)
+            mrc1_p2 = MrcObj(objA)
+            mrc1_p3 = MrcObj(objA)
+            mrc1_p4 = MrcObj(objA)
 
-            mrc2_p1 = mrc_obj(objB)
-            mrc2_p2 = mrc_obj(objB)
-            mrc2_p3 = mrc_obj(objB)
-            mrc2_p4 = mrc_obj(objB)
+            mrc2_p1 = MrcObj(objB)
+            mrc2_p2 = MrcObj(objB)
+            mrc2_p3 = MrcObj(objB)
+            mrc2_p4 = MrcObj(objB)
 
             mrc2_p1.data = np.swapaxes(prob_maps_chain[:, :, :, 0], 0, 2)
             mrc2_p2.data = np.swapaxes(prob_maps_chain[:, :, :, 1], 0, 2)
