@@ -6,7 +6,6 @@ from utils import mrc_set_vox_size, fastVEC
 
 def alpha_is_zero(objA, objB, threshold1, threshold2, bandwidth, voxel_spacing, angle_spacing, topN, showPDB, modeVal,
                   evalMode):
-
     # construct mrc objects
     mrc1 = MrcObj(objA)
     mrc2 = MrcObj(objB)
@@ -53,7 +52,8 @@ def alpha_is_zero(objA, objB, threshold1, threshold2, bandwidth, voxel_spacing, 
     elif modeVal == 'L':
         modeVal = "Laplacian"
 
-    search_map_fft(tgt_map_resampled, input_map_resampled, TopN=topN, ang=angle_spacing, mode=modeVal, is_eval_mode=evalMode, showPDB=showPDB,
+    search_map_fft(tgt_map_resampled, input_map_resampled, TopN=topN, ang=angle_spacing, mode=modeVal,
+                   is_eval_mode=evalMode, showPDB=showPDB,
                    folder=folder)
 
 
@@ -177,8 +177,9 @@ if __name__ == "__main__":
         mrc_N2.data = np.zeros((dim, dim, dim), dtype="float32")
 
         # fastVEC
-        print()
+        print("\n###Processing MAP1 Resampling###")
         mrc_N1 = fastVEC(mrc1, mrc_N1, dreso=bandwidth, density_map=mrc1.data)
+        print("\n###Processing MAP2 Resampling###")
         mrc_N2 = fastVEC(mrc2, mrc_N2, dreso=bandwidth, density_map=mrc2.data)
         print()
 
@@ -309,17 +310,17 @@ if __name__ == "__main__":
 
             print("\n###Generating Params for Resampling Probability Map 1###")
 
-            mrc1_p1, mrc_N1_p1 = mrc_set_vox_size(mrc1_p1, th=0.0, voxel_size=voxel_spacing)
-            mrc1_p2, mrc_N1_p2 = mrc_set_vox_size(mrc1_p2, th=0.0, voxel_size=voxel_spacing)
-            mrc1_p3, mrc_N1_p3 = mrc_set_vox_size(mrc1_p3, th=0.0, voxel_size=voxel_spacing)
-            mrc1_p4, mrc_N1_p4 = mrc_set_vox_size(mrc1_p4, th=0.0, voxel_size=voxel_spacing)
+            mrc1_p1, mrc_N1_p1 = mrc_set_vox_size(mrc1_p1, thr=0.0, voxel_size=voxel_spacing)
+            mrc1_p2, mrc_N1_p2 = mrc_set_vox_size(mrc1_p2, thr=0.0, voxel_size=voxel_spacing)
+            mrc1_p3, mrc_N1_p3 = mrc_set_vox_size(mrc1_p3, thr=0.0, voxel_size=voxel_spacing)
+            mrc1_p4, mrc_N1_p4 = mrc_set_vox_size(mrc1_p4, thr=0.0, voxel_size=voxel_spacing)
 
             print("\n###Generating Params for Resampling Probability Map 2###")
 
-            mrc2_p1, mrc_N2_p1 = mrc_set_vox_size(mrc2_p1, th=0.0, voxel_size=voxel_spacing)
-            mrc2_p2, mrc_N2_p2 = mrc_set_vox_size(mrc2_p2, th=0.0, voxel_size=voxel_spacing)
-            mrc2_p3, mrc_N2_p3 = mrc_set_vox_size(mrc2_p3, th=0.0, voxel_size=voxel_spacing)
-            mrc2_p4, mrc_N2_p4 = mrc_set_vox_size(mrc2_p4, th=0.0, voxel_size=voxel_spacing)
+            mrc2_p1, mrc_N2_p1 = mrc_set_vox_size(mrc2_p1, thr=0.0, voxel_size=voxel_spacing)
+            mrc2_p2, mrc_N2_p2 = mrc_set_vox_size(mrc2_p2, thr=0.0, voxel_size=voxel_spacing)
+            mrc2_p3, mrc_N2_p3 = mrc_set_vox_size(mrc2_p3, thr=0.0, voxel_size=voxel_spacing)
+            mrc2_p4, mrc_N2_p4 = mrc_set_vox_size(mrc2_p4, thr=0.0, voxel_size=voxel_spacing)
 
             mrc_list = [mrc_N1, mrc_N2, mrc_N1_p1, mrc_N1_p2, mrc_N1_p3, mrc_N1_p4, mrc_N2_p1, mrc_N2_p2, mrc_N2_p3,
                         mrc_N2_p4]
@@ -352,11 +353,7 @@ if __name__ == "__main__":
             mrc_N2_p3 = fastVEC(mrc2_p3, mrc_N2_p3, dreso=bandwidth, prob_map=True, density_map=mrc2.data)
             mrc_N2_p4 = fastVEC(mrc2_p4, mrc_N2_p4, dreso=bandwidth, prob_map=True, density_map=mrc2.data)
 
-            search_map_fft_prob(mrc_N1_p1, mrc_N1_p2, mrc_N1_p3, mrc_N1_p4,
-                                mrc_N1, mrc_N2,
-                                mrc_N2_p1, mrc_N2_p2, mrc_N2_p3, mrc_N2_p4,
-                                ang=angle_spacing, alpha=alpha, TopN=topN, num_proc=num_processors, vave=vave,
-                                vstd=vstd,
-                                pave=pave, pstd=pstd,
-                                showPDB=showPDB,
+            search_map_fft_prob(mrc_N1, mrc_N2, mrc_N1_p1, mrc_N1_p2, mrc_N1_p3, mrc_N1_p4, mrc_N2_p1, mrc_N2_p2,
+                                mrc_N2_p3, mrc_N2_p4, ang=angle_spacing, alpha=alpha, TopN=topN,
+                                vave=vave, vstd=vstd, pave=pave, pstd=pstd, showPDB=showPDB,
                                 folder=folder)

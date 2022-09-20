@@ -12,7 +12,7 @@ from tqdm import tqdm
 from utils import *
 
 pyfftw.config.PLANNER_EFFORT = "FFTW_MEASURE"
-pyfftw.config.NUM_THREADS = multiprocessing.cpu_count()
+pyfftw.config.NUM_THREADS = min(multiprocessing.cpu_count() - 2, 2)
 
 
 class MrcObj:
@@ -297,6 +297,14 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
         Z1 = np.conj(Z1)
         target_list = [X1, Y1, Z1]
 
+    # fftw plans initialization
+    a = pyfftw.empty_aligned(mrc_search.vec[..., 0].shape, dtype="float32")
+    b = pyfftw.empty_aligned((a.shape[0], a.shape[1], a.shape[2] // 2 + 1), dtype="complex64")
+    c = pyfftw.empty_aligned(mrc_search.vec[..., 0].shape, dtype="float32")
+
+    fft_object = pyfftw.FFTW(a, b, axes=(0, 1, 2))
+    ifft_object = pyfftw.FFTW(b, c, direction="FFTW_BACKWARD", axes=(0, 1, 2), normalise_idft=False)
+
     print("###Start Searching###")
 
     angle_score = []
@@ -308,6 +316,9 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
                                                         angle,
                                                         target_list,
                                                         mrc_target,
+                                                        (a, b, c),
+                                                        fft_object,
+                                                        ifft_object,
                                                         mode=mode)
         angle_score.append({
             "angle": angle,
@@ -388,6 +399,9 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
                                                                          angle,
                                                                          target_list,
                                                                          mrc_target,
+                                                                         (a, b, c),
+                                                                         fft_object,
+                                                                         ifft_object,
                                                                          mode=mode)
 
             refined_score.append({"angle": tuple(angle),
@@ -457,13 +471,12 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
     return refined_list
 
 
-def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
-                        mrc_target, mrc_search,
+def search_map_fft_prob(mrc_target, mrc_input,
+                        mrc_P1, mrc_P2, mrc_P3, mrc_P4,
                         mrc_search_p1, mrc_search_p2, mrc_search_p3, mrc_search_p4,
-                        ang, alpha=0.0, TopN=10, num_proc=4,
-                        vave=-10, vstd=-10, pave=-10, pstd=-10,
-                        showPDB=False,
-                        folder=None):
+                        ang, alpha=0.0, TopN=10,
+                        vave=-1, vstd=-1, pave=-1, pstd=-1,
+                        showPDB=False, folder=None):
     """The main search function for fining the best superimposition for the target and the query map.
 
     Args:
@@ -477,12 +490,11 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
         mrc_search_p4: query probability map4
         alpha: weighting parameter
         mrc_target (MrcObj): the input target map
-        mrc_search (MrcObj): the input query map
+        mrc_input (MrcObj): the input query map
         TopN (int, optional): the number of top superimposition to find. Defaults to 10.
         ang (int, optional): search interval for angular rotation. Defaults to 30.
-        mode (str, optional): special modes to use. Defaults to "VecProduct".
-        is_eval_mode (bool, optional): set the evaluation mode true will only perform scoring but not searching. Defaults to False.
-        save_path (str, optional): the path to save output .pdb files. Defaults to the current directory.
+        vave, vstd, pave, pstd (float, optional): the average and standard deviation of
+        the DOT score and probability score if known prior to search.
 
     Returns:
         refined_list (list): a list of refined search results including the probability score
@@ -529,7 +541,13 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
 
     angle_comb = calc_angle_comb(ang)
 
-    # Paralleled processing for rotation and FFT process per angle in angle_comb
+    # fftw plans initialization
+    a = pyfftw.empty_aligned(mrc_search_p1.data.shape, dtype="float32")
+    b = pyfftw.empty_aligned((a.shape[0], a.shape[1], a.shape[2] // 2 + 1), dtype="complex64")
+    c = pyfftw.empty_aligned(mrc_search_p1.data.shape, dtype="float32")
+
+    fft_object = pyfftw.FFTW(a, b, axes=(0, 1, 2))
+    ifft_object = pyfftw.FFTW(b, c, direction="FFTW_BACKWARD", axes=(0, 1, 2), normalise_idft=False)
 
     print()
     print("###Start Searching###")
@@ -540,15 +558,17 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
         pass
     else:
         for angle in tqdm(angle_comb):
-            vec_score, vec_trans, prob_score, prob_trans, _, _ = rot_and_search_fft_prob(mrc_search.data,
-                                                                                         mrc_search.vec,
+            vec_score, vec_trans, prob_score, prob_trans, _, _ = rot_and_search_fft_prob(mrc_input.data,
+                                                                                         mrc_input.vec,
                                                                                          mrc_search_p1.data,
                                                                                          mrc_search_p2.data,
                                                                                          mrc_search_p3.data,
                                                                                          mrc_search_p4.data,
                                                                                          angle,
                                                                                          target_list,
-                                                                                         alpha=0.0)
+                                                                                         0.0,
+                                                                                         (a, b, c),
+                                                                                         fft_object, ifft_object)
             angle_score.append({
                 "angle": angle,
                 "vec_score": vec_score * rd3,
@@ -556,27 +576,6 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
                 "prob_score": prob_score * rd3,
                 "prob_trans": prob_trans
             })
-
-        # multiprocessing version
-        # with concurrent.futures.ProcessPoolExecutor(max_workers=num_proc) as executor:
-        #     rets = {
-        #         executor.submit(rot_and_search_fft_prob,
-        #                         mrc_search.data,
-        #                         mrc_search.vec,
-        #                         mrc_search_p1.data,
-        #                         mrc_search_p2.data,
-        #                         mrc_search_p3.data,
-        #                         mrc_search_p4.data,
-        #                         angle,
-        #                         target_list,
-        #                         alpha=0.0): angle for angle in angle_comb}
-        #     for future in tqdm(concurrent.futures.as_completed(rets), total=len(angle_comb)):
-        #         angle = rets[future]
-        #         angle_score.append([tuple(angle),
-        #                             future.result()[0] * rd3,
-        #                             future.result()[1],
-        #                             future.result()[2] * rd3,
-        #                             future.result()[3]])
 
         # calculate the ave and std for all the rotations
         score_arr_vec = np.array([row["vec_score"] for row in angle_score])
@@ -596,8 +595,8 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
 
     for angle in tqdm(angle_comb):
         vec_score, vec_trans, prob_score, prob_trans, mixed_score, mixed_trans = rot_and_search_fft_prob(
-            mrc_search.data,
-            mrc_search.vec,
+            mrc_input.data,
+            mrc_input.vec,
             mrc_search_p1.data,
             mrc_search_p2.data,
             mrc_search_p3.data,
@@ -605,6 +604,7 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
             angle,
             target_list,
             alpha,
+            (a, b, c), fft_object, ifft_object,
             vstd=vstd, vave=vave, pstd=pstd, pave=pave)
 
         if mixed_score is None:
@@ -621,33 +621,6 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
             "mixed_score": mixed_score * rd3,
             "mixed_trans": mixed_trans
         })
-
-    # with concurrent.futures.ProcessPoolExecutor(max_workers=num_proc) as executor:
-    #     rets = {
-    #         executor.submit(rot_and_search_fft,
-    #                         mrc_search.data,
-    #                         mrc_search.vec,
-    #                         mrc_search_p1.data,
-    #                         mrc_search_p2.data,
-    #                         mrc_search_p3.data,
-    #                         mrc_search_p4.data,
-    #                         angle,
-    #                         target_list,
-    #                         alpha,
-    #                         vstd,
-    #                         vave,
-    #                         pstd,
-    #                         pave): angle for angle in angle_comb}
-    #
-    #     for future in tqdm(concurrent.futures.as_completed(rets), total=len(angle_comb)):
-    #         angle = rets[future]
-    #         angle_score.append({"angle": tuple(angle),
-    #                             "vec_score": future.result()[0] * rd3,
-    #                             "vec_trans": future.result()[1],
-    #                             "prob_score": future.result()[2] * rd3,
-    #                             "prob_trans": future.result()[3],
-    #                             "mixed_score": future.result()[4] * rd3,
-    #                             "mixed_trans": future.result()[5]})
 
     # sort the list and save topN
     sorted_top_n = sorted(angle_score, key=lambda x: x["mixed_score"], reverse=True)[:TopN]
@@ -687,8 +660,8 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
 
         for ang in tqdm(refine_ang_list, desc="Local Refining"):
             vec_score, vec_trans, prob_score, prob_trans, mixed_score, mixed_trans, r_vec, r_data = rot_and_search_fft_prob(
-                mrc_search.data,
-                mrc_search.vec,
+                mrc_input.data,
+                mrc_input.vec,
                 mrc_search_p1.data,
                 mrc_search_p2.data,
                 mrc_search_p3.data,
@@ -696,6 +669,7 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
                 ang,
                 target_list,
                 alpha,
+                (a, b, c), fft_object, ifft_object,
                 ret_data=True,
                 vstd=vstd, vave=vave, pstd=pstd, pave=pave)
 
@@ -729,11 +703,11 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
         # convert the translation back to the original coordinate system
         r = R.from_euler('xyz', result_mrc["angle"], degrees=True)
         new_trans = convert_trans(mrc_target.cent,
-                                  mrc_search.cent,
+                                  mrc_input.cent,
                                   r,
                                   result_mrc["mixed_trans"],
-                                  mrc_search.xwidth,
-                                  mrc_search.xdim)
+                                  mrc_input.xwidth,
+                                  mrc_input.xdim)
 
         print("\n#" + str(i),
               "Rotation=",
@@ -763,7 +737,7 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
                      result_mrc["data"],
                      sco_arr,
                      result_mrc["mixed_score"],
-                     mrc_search.xwidth,
+                     mrc_input.xwidth,
                      result_mrc["mixed_trans"],
                      result_mrc["angle"],
                      folder_path,
@@ -772,7 +746,9 @@ def search_map_fft_prob(mrc_P1, mrc_P2, mrc_P3, mrc_P4,
     return refined_list
 
 
-def rot_and_search_fft(data, vec, angle, target_list, mrc_target, mode="VecProduct"):
+def rot_and_search_fft(data, vec, angle, target_list, mrc_target,
+                       fft_list, fft_obj, ifft_obj,
+                       mode="VecProduct"):
     """
     It rotates the query map and vector representation, then searches for the best translation using FFT
     :param data: the 3D map to be rotated
@@ -789,14 +765,6 @@ def rot_and_search_fft(data, vec, angle, target_list, mrc_target, mode="VecProdu
     # Rotate the query map and vector representation
     new_vec, new_data = rot_mrc(data, vec, rot_mtx)
 
-    # fftw plans initialization
-    a = pyfftw.empty_aligned(new_vec[..., 0].shape, dtype="float32")
-    b = pyfftw.empty_aligned((a.shape[0], a.shape[1], a.shape[2] // 2 + 1), dtype="complex64")
-    c = pyfftw.empty_aligned(new_vec[..., 0].shape, dtype="float32")
-
-    fft_object = pyfftw.FFTW(a, b, axes=(0, 1, 2))
-    ifft_object = pyfftw.FFTW(b, c, direction="FFTW_BACKWARD", axes=(0, 1, 2), normalise_idft=False)
-
     if mode == "VecProduct":
 
         # Compose the query FFT list
@@ -808,15 +776,17 @@ def rot_and_search_fft(data, vec, angle, target_list, mrc_target, mode="VecProdu
         query_list_vec = [x2, y2, z2]
 
         # Search for best translation using FFT
-        fft_result_list_vec = fft_search_best_dot(target_list[:3], query_list_vec, a, b, c, fft_object, ifft_object)
+        fft_result_list_vec = fft_search_best_dot(target_list[:3], query_list_vec, *fft_list, fft_obj, ifft_obj)
 
         vec_score, vec_trans = find_best_trans_list(fft_result_list_vec)
 
+    # otherwise just use single dimension mode
     else:
 
         vec_score, vec_trans = fft_search_score_trans_1d(target_list[0],
-                                                         new_data, a, b,
-                                                         fft_object, ifft_object, mode,
+                                                         new_data,
+                                                         fft_list[0], fft_list[1],
+                                                         fft_obj, ifft_obj, mode,
                                                          mrc_target.ave)
 
         if mode == "CC":
@@ -834,6 +804,7 @@ def rot_and_search_fft_prob(data, vec,
                             angle,
                             target_list,
                             alpha,
+                            fft_list, fft_obj, ifft_obj,
                             ret_data=False,
                             vstd=None, vave=None, pstd=None, pave=None):
     """ Calculate the best translation for the query map given a rotation angle
@@ -874,17 +845,11 @@ def rot_and_search_fft_prob(data, vec,
     query_list_vec = [x2, y2, z2]
     query_list_prob = [p21, p22, p23, p24]
 
-    # fftw plans initialization
-    a = pyfftw.empty_aligned((x2.shape), dtype="float32")
-    b = pyfftw.empty_aligned((a.shape[0], a.shape[1], a.shape[2] // 2 + 1), dtype="complex64")
-    c = pyfftw.empty_aligned((x2.shape), dtype="float32")
-
-    fft_object = pyfftw.FFTW(a, b, axes=(0, 1, 2))
-    ifft_object = pyfftw.FFTW(b, c, direction="FFTW_BACKWARD", axes=(0, 1, 2), normalise_idft=False)
-
     # Search for best translation using FFT
-    fft_result_list_vec = fft_search_best_dot(target_list[:3], query_list_vec, a, b, c, fft_object, ifft_object)
-    fft_result_list_prob = fft_search_best_dot(target_list[3:], query_list_prob, a, b, c, fft_object, ifft_object)
+    fft_result_list_vec = fft_search_best_dot(target_list[:3], query_list_vec,
+                                              *fft_list, fft_obj, ifft_obj)
+    fft_result_list_prob = fft_search_best_dot(target_list[3:], query_list_prob,
+                                               *fft_list, fft_obj, ifft_obj)
 
     vec_score, vec_trans = find_best_trans_list(fft_result_list_vec)
     prob_score, prob_trans = find_best_trans_list(fft_result_list_prob)

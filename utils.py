@@ -4,13 +4,13 @@ import numba
 import numpy as np
 import pyfftw
 
-
-def mrc_set_vox_size(mrc, th=0.00, voxel_size=7.0):
+@numba.jit()
+def mrc_set_vox_size(mrc, thr=0.00, voxel_size=7.0):
     """Set the voxel size for the specified MrcObj
 
     Args:
         mrc (MrcObj): [the target MrcObj to set the voxel size for]
-        th (float, optional): preset threshold for density cutoff. Defaults to 0.01.
+        thr (float, optional): preset threshold for density cutoff. Defaults to 0.
         voxel_size (float, optional): the granularity of the voxel in terms of angstroms. Defaults to 7.0.
 
     Returns:
@@ -19,13 +19,13 @@ def mrc_set_vox_size(mrc, th=0.00, voxel_size=7.0):
     """
 
     # if th < 0 add th to all value
-    if th < 0:
-        mrc.dens = mrc.dens - th
-        th = 0.0
+    if thr < 0:
+        mrc.dens = mrc.dens - thr
+        thr = 0.0
 
     # zero all the values less than threshold
-    mrc.dens[mrc.dens < th] = 0.0
-    mrc.data[mrc.data < th] = 0.0
+    mrc.dens[mrc.dens < thr] = 0.0
+    mrc.data[mrc.data < thr] = 0.0
 
     # calculate maximum distance for non-zero entries
     non_zero_index_list = np.array(np.nonzero(mrc.data)).T
@@ -111,7 +111,9 @@ def fastVEC(src, dest, dreso=16.0, prob_map=False, density_map=None):
     dest_orig = dest.orig
     dest_dims = np.array((dest.xdim, dest.ydim, dest.zdim))
 
-    dest_data, dest_vec = doFastVEC(src_xwidth, src_orig, src_dims, src.data, dest_xwidth, dest_orig, dest_dims,
+    # type cast to ensure function signature match
+    dest_data, dest_vec = doFastVEC(src_xwidth, src_orig, src_dims.astype(np.int32), src.data,
+                                    dest_xwidth, dest_orig, dest_dims.astype(np.int32),
                                     dest.vec, dest.data, dreso, prob_map, density_map)
 
     dsum = np.sum(dest_data)
@@ -136,7 +138,7 @@ def fastVEC(src, dest, dreso=16.0, prob_map=False, density_map=None):
 
     return dest
 
-
+# original function signature for linux platform
 # @numba.njit((numba.float64, numba.float32[:], numba.int64[:], numba.float32[:, :, :], numba.float64, numba.float64[:],
 #              numba.int64[:], numba.float32[:, :, :, :], numba.float32[:, :, :], numba.float64, numba.boolean,
 #              numba.float32[:, :, :]), parallel=True)
@@ -198,14 +200,16 @@ def doFastVEC(src_xwidth, src_orig, src_dims, src_data,
                     endp[2] = src_dims[2]
 
                 if prob_map:
+                    # calculate weighted average over the region
                     dest_data[x][y][z] = calc_avg(stp, endp, src_data, density_map)
                 else:
-                    # compute the total density
+                    # compute the total density and vector with Gaussian weight
                     dtotal, pos2 = calc(stp, endp, pos, src_data, fsiv)
                     dest_data[x][y][z] = dtotal
                     if dtotal == 0:
                         continue
 
+                    # vector normalization
                     rd = 1.0 / dtotal
                     pos2 *= rd
                     tmpcd = pos2 - pos
