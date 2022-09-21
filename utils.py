@@ -3,8 +3,9 @@ import copy
 import numba
 import numpy as np
 import pyfftw
+from scipy.interpolate import RegularGridInterpolator
 
-@numba.jit()
+
 def mrc_set_vox_size(mrc, thr=0.00, voxel_size=7.0):
     """Set the voxel size for the specified MrcObj
 
@@ -138,13 +139,14 @@ def fastVEC(src, dest, dreso=16.0, prob_map=False, density_map=None):
 
     return dest
 
+
 # original function signature for linux platform
 # @numba.njit((numba.float64, numba.float32[:], numba.int64[:], numba.float32[:, :, :], numba.float64, numba.float64[:],
 #              numba.int64[:], numba.float32[:, :, :, :], numba.float32[:, :, :], numba.float64, numba.boolean,
 #              numba.float32[:, :, :]), parallel=True)
 @numba.njit((numba.float64, numba.float32[:], numba.int32[:], numba.float32[:, :, :], numba.float64, numba.float64[:],
              numba.int32[:], numba.float32[:, :, :, :], numba.float32[:, :, :], numba.float64, numba.boolean,
-             numba.float32[:, :, :]), parallel=True)
+             numba.float32[:, :, :]))
 def doFastVEC(src_xwidth, src_orig, src_dims, src_data,
               dest_xwidth, dest_orig, dest_dims, dest_vec, dest_data,
               dreso=16.0, prob_map=False, density_map=None):
@@ -225,26 +227,26 @@ def doFastVEC(src_xwidth, src_orig, src_dims, src_data,
     return dest_data, dest_vec
 
 
-@numba.jit(nopython=True)
-def rot_pos_mtx(mtx, vec):
-    """Rotate a vector or matrix using a rotation matrix.
+# @numba.jit(nopython=True)
+# def rot_pos_mtx(mtx, vec):
+#     """Rotate a vector or matrix using a rotation matrix.
+#
+#     Args:
+#         mtx (numpy.array): the rotation matrix
+#         vec (numpy.array): the vector/matrix to be rotated
+#
+#     Returns:
+#         ret (numpy.array): the rotated vector/matrix
+#     """
+#     mtx = mtx.astype(np.float32)
+#     vec = vec.astype(np.float32)
+#
+#     ret = vec @ mtx
+#
+#     return ret
 
-    Args:
-        mtx (numpy.array): the rotation matrix
-        vec (numpy.array): the vector/matrix to be rotated
 
-    Returns:
-        ret (numpy.array): the rotated vector/matrix
-    """
-    mtx = mtx.astype(np.float32)
-    vec = vec.astype(np.float32)
-
-    ret = vec @ mtx
-
-    return ret
-
-@numba.jit(forceobj=True)
-def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx):
+def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, interp="linear"):
     """A function to rotation the density and vector array by a specified angle.
 
     Args:
@@ -285,8 +287,11 @@ def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx):
     z_valid1 = zz_prime >= 0
     z_valid2 = zz_prime <= Nz - 1
 
+    # get non-zero indicies in original density
+    nonzero_dens = orig_mrc_data > 0
+
     # get voxels with all valid dimensions
-    valid_voxel = x_valid1 * x_valid2 * y_valid1 * y_valid2 * z_valid1 * z_valid2
+    valid_voxel = x_valid1 * x_valid2 * y_valid1 * y_valid2 * z_valid1 * z_valid2 * nonzero_dens
 
     # get nonzero positions
     x_valid_idx, y_valid_idx, z_valid_idx = np.where(valid_voxel > 0)
@@ -294,10 +299,6 @@ def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx):
     # create new arrays to store the final result
     new_data_array = np.zeros_like(orig_mrc_data)
     new_vec_array = np.zeros_like(orig_mrc_vec)
-
-    # create grid interpolator
-    # data_w_coor = RegularGridInterpolator((x, y, z), orig_mrc_data, method="nearest")
-    # vec_w_coor = RegularGridInterpolator((x, y, z), orig_mrc_vec, method="nearest")
 
     # gather points to be interpolated
     interp_points = np.array(
@@ -308,16 +309,23 @@ def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx):
         ]
     ).T
 
-    # do interpolation
-    # interp_result = data_w_coor(interp_points)
-    # vec_result = vec_w_coor(interp_points)
+    if interp is not None:
+        # create grid interpolator
+        data_w_coor = RegularGridInterpolator((x, y, z), orig_mrc_data, method=interp)
+        vec_w_coor = RegularGridInterpolator((x, y, z), orig_mrc_vec, method=interp)
 
-    interp_result = orig_mrc_data[interp_points[:, 0].astype(np.int32),
+        # do interpolation
+        interp_result = data_w_coor(interp_points)
+        vec_result = vec_w_coor(interp_points)
+
+    else:
+        # no interpolation
+        interp_result = orig_mrc_data[interp_points[:, 0].astype(np.int32),
+                                      interp_points[:, 1].astype(np.int32),
+                                      interp_points[:, 2].astype(np.int32)]
+        vec_result = orig_mrc_vec[interp_points[:, 0].astype(np.int32),
                                   interp_points[:, 1].astype(np.int32),
                                   interp_points[:, 2].astype(np.int32)]
-    vec_result = orig_mrc_vec[interp_points[:, 0].astype(np.int32),
-                              interp_points[:, 1].astype(np.int32),
-                              interp_points[:, 2].astype(np.int32)]
 
     # save interpolated data
     new_data_array[x_valid_idx, y_valid_idx, z_valid_idx] = interp_result
@@ -325,6 +333,7 @@ def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx):
                                                                                     axes=((0), (0))), 0, 1)
 
     return new_vec_array, new_data_array
+
 
 @numba.jit(nopython=True)
 def laplacian_filter(arr):
@@ -429,8 +438,7 @@ def show_vec(origin,
 
 
 @numba.jit(forceobj=True)
-def rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx):
-
+def rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx, interp="linear"):
     Nx, Ny, Nz = data.shape
     x = np.linspace(0, Nx - 1, Nx)
     y = np.linspace(0, Ny - 1, Ny)
@@ -459,8 +467,10 @@ def rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx):
     z_valid1 = zz_prime >= 0
     z_valid2 = zz_prime <= Nz - 1
 
+    nonzero_dens = data > 0
+
     # get voxels with all valid dimensions
-    valid_voxel = x_valid1 * x_valid2 * y_valid1 * y_valid2 * z_valid1 * z_valid2
+    valid_voxel = x_valid1 * x_valid2 * y_valid1 * y_valid2 * z_valid1 * z_valid2 * nonzero_dens
 
     # get nonzero positions
     x_valid_idx, y_valid_idx, z_valid_idx = np.where(valid_voxel > 0)
@@ -473,6 +483,8 @@ def rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx):
     new_p3 = np.zeros_like(prob_c3)
     new_p4 = np.zeros_like(prob_c4)
 
+
+
     # gather points to be interpolated
     interp_points = np.array(
         [
@@ -482,24 +494,42 @@ def rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx):
         ]
     ).T
 
-    interp_result = data[interp_points[:, 0].astype(np.int32),
-                                  interp_points[:, 1].astype(np.int32),
-                                  interp_points[:, 2].astype(np.int32)]
-    vec_result = vec[interp_points[:, 0].astype(np.int32),
-                              interp_points[:, 1].astype(np.int32),
-                              interp_points[:, 2].astype(np.int32)]
-    p1_result = prob_c1[interp_points[:, 0].astype(np.int32),
-                              interp_points[:, 1].astype(np.int32),
-                              interp_points[:, 2].astype(np.int32)]
-    p2_result = prob_c2[interp_points[:, 0].astype(np.int32),
+    if interp is not None:
+        # interpolate
+        data_w_coor = RegularGridInterpolator((x, y, z), data, method=interp)
+        vec_w_coor = RegularGridInterpolator((x, y, z), vec, method=interp)
+        p1_w_coor = RegularGridInterpolator((x, y, z), prob_c1, method=interp)
+        p2_w_coor = RegularGridInterpolator((x, y, z), prob_c2, method=interp)
+        p3_w_coor = RegularGridInterpolator((x, y, z), prob_c3, method=interp)
+        p4_w_coor = RegularGridInterpolator((x, y, z), prob_c4, method=interp)
+
+        interp_result = data_w_coor(interp_points)
+        vec_result = vec_w_coor(interp_points)
+        p1_result = p1_w_coor(interp_points)
+        p2_result = p2_w_coor(interp_points)
+        p3_result = p3_w_coor(interp_points)
+        p4_result = p4_w_coor(interp_points)
+
+    else:
+        # use casting
+        interp_result = data[interp_points[:, 0].astype(np.int32),
                              interp_points[:, 1].astype(np.int32),
                              interp_points[:, 2].astype(np.int32)]
-    p3_result = prob_c3[interp_points[:, 0].astype(np.int32),
-                             interp_points[:, 1].astype(np.int32),
-                             interp_points[:, 2].astype(np.int32)]
-    p4_result = prob_c4[interp_points[:, 0].astype(np.int32),
-                             interp_points[:, 1].astype(np.int32),
-                             interp_points[:, 2].astype(np.int32)]
+        vec_result = vec[interp_points[:, 0].astype(np.int32),
+                         interp_points[:, 1].astype(np.int32),
+                         interp_points[:, 2].astype(np.int32)]
+        p1_result = prob_c1[interp_points[:, 0].astype(np.int32),
+                            interp_points[:, 1].astype(np.int32),
+                            interp_points[:, 2].astype(np.int32)]
+        p2_result = prob_c2[interp_points[:, 0].astype(np.int32),
+                            interp_points[:, 1].astype(np.int32),
+                            interp_points[:, 2].astype(np.int32)]
+        p3_result = prob_c3[interp_points[:, 0].astype(np.int32),
+                            interp_points[:, 1].astype(np.int32),
+                            interp_points[:, 2].astype(np.int32)]
+        p4_result = prob_c4[interp_points[:, 0].astype(np.int32),
+                            interp_points[:, 1].astype(np.int32),
+                            interp_points[:, 2].astype(np.int32)]
 
     # save interpolated data
     new_data_array[x_valid_idx, y_valid_idx, z_valid_idx] = interp_result

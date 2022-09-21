@@ -12,7 +12,7 @@ from tqdm import tqdm
 from utils import *
 
 pyfftw.config.PLANNER_EFFORT = "FFTW_MEASURE"
-pyfftw.config.NUM_THREADS = min(multiprocessing.cpu_count() - 2, 2)
+pyfftw.config.NUM_THREADS = max(multiprocessing.cpu_count() - 2, 2)
 
 
 class MrcObj:

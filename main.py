@@ -281,7 +281,6 @@ if __name__ == "__main__":
             mrc2 = MrcObj(objB)
 
             # probability MRCs
-
             mrc1_p1 = MrcObj(objA)
             mrc1_p2 = MrcObj(objA)
             mrc1_p3 = MrcObj(objA)
@@ -292,6 +291,7 @@ if __name__ == "__main__":
             mrc2_p3 = MrcObj(objB)
             mrc2_p4 = MrcObj(objB)
 
+            # fill in the data
             mrc2_p1.data = np.swapaxes(prob_maps_chain[:, :, :, 0], 0, 2)
             mrc2_p2.data = np.swapaxes(prob_maps_chain[:, :, :, 1], 0, 2)
             mrc2_p3.data = np.swapaxes(prob_maps_chain[:, :, :, 2], 0, 2)
