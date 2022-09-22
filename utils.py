@@ -70,6 +70,7 @@ def mrc_set_vox_size(mrc, thr=0.00, voxel_size=7.0):
 
 @numba.jit(nopython=True)
 def calc(stp, endp, pos, mrc1_data, fsiv):
+    """Calculate the density and vector in resized map using Gaussian interpolation in original MRC density map"""
     dtotal = 0.0
     pos2 = np.zeros((3,))
 
@@ -94,10 +95,22 @@ def calc(stp, endp, pos, mrc1_data, fsiv):
 
 @numba.jit(nopython=True)
 def calc_avg(stp, endp, prob_data, mrc_data):
+    """
+    It calculates the weighted average probability of a given region of the probability map
+
+    :param stp: start point of the region
+    :param endp: the end point of the region of interest
+    :param prob_data: the probability data from the .mrc file
+    :param mrc_data: the density map
+    :return: The average probability of the selected region.
+    """
     selected = prob_data[stp[0]:endp[0], stp[1]:endp[1], stp[2]:endp[2]]
     weights = mrc_data[stp[0]:endp[0], stp[1]:endp[1], stp[2]:endp[2]]
-    dtotal = np.average(selected, weights=weights)
-    return dtotal
+    # return 0 if no density in the selected region
+    if np.sum(weights) == 0:
+        return 0.0
+    # return the weighted average probability of the selected region
+    return np.average(selected, weights=weights)
 
 
 def fastVEC(src, dest, dreso=16.0, prob_map=False, density_map=None):
@@ -119,6 +132,12 @@ def fastVEC(src, dest, dreso=16.0, prob_map=False, density_map=None):
 
     dsum = np.sum(dest_data)
     Nact = np.count_nonzero(dest_data)
+
+    # gracefully handle the case where no active voxels are found
+    if Nact == 0:
+        print("Error: No density value after resampling. Is the voxel spacing parameter too large?")
+        exit(-1)
+
     ave = np.mean(dest_data[dest_data > 0])
     std = np.linalg.norm(dest_data[dest_data > 0])
     std_norm_ave = np.linalg.norm(dest_data[dest_data > 0] - ave)
@@ -246,7 +265,7 @@ def doFastVEC(src_xwidth, src_orig, src_dims, src_data,
 #     return ret
 
 
-def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, interp="linear"):
+def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, interp=None):
     """A function to rotation the density and vector array by a specified angle.
 
     Args:
@@ -370,7 +389,7 @@ def laplacian_filter(arr):
     return new_arr
 
 
-def show_vec(origin,
+def save_pdb(origin,
              sampled_mrc_vec,
              sampled_mrc_data,
              score_arr,
@@ -438,7 +457,20 @@ def show_vec(origin,
 
 
 @numba.jit(forceobj=True)
-def rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx, interp="linear"):
+def rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx, interp=None):
+    """
+    It takes in a 3D array, and a 3x3 rotation matrix, and returns a 3D array that is the result of rotating the input array
+    by the rotation matrix
+
+    :param data: the density map
+    :param vec: the vector field
+    :param prob_c1, prob_c2, prob_c3, prob_c4: probability of 4 classes
+    :param mtx: the rotation matrix
+    :param interp: interpolation method, defaults to None (optional)
+    :return: The new_vec_array is the new vector array after rotation. The new_data_array is the new density array after
+    rotation. The new_p1, new_p2, new_p3, new_p4 are the new probability arrays after rotation.
+    """
+
     Nx, Ny, Nz = data.shape
     x = np.linspace(0, Nx - 1, Nx)
     y = np.linspace(0, Ny - 1, Ny)
@@ -482,8 +514,6 @@ def rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx, interp="lin
     new_p2 = np.zeros_like(prob_c2)
     new_p3 = np.zeros_like(prob_c3)
     new_p4 = np.zeros_like(prob_c4)
-
-
 
     # gather points to be interpolated
     interp_points = np.array(

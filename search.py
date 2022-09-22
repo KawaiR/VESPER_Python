@@ -12,7 +12,7 @@ from tqdm import tqdm
 from utils import *
 
 pyfftw.config.PLANNER_EFFORT = "FFTW_MEASURE"
-pyfftw.config.NUM_THREADS = max(multiprocessing.cpu_count() - 2, 2)
+pyfftw.config.NUM_THREADS = max(multiprocessing.cpu_count() - 2, 2)  # Maybe the CPU is sweating too much?
 
 
 class MrcObj:
@@ -80,7 +80,8 @@ def find_best_trans_list_prob(input_list, alpha):
     """find the best translation based on list of Z score normalised FFT transformation results
 
     Args:
-        input_list (numpy.array): FFT result list, alpha: weighting parameter
+        input_list (numpy.array): FFT result list
+        alpha (float): weighting parameter
 
     Returns:
         best (float): the maximum score found
@@ -102,12 +103,8 @@ def find_best_trans_list_prob(input_list, alpha):
     std_prob = np.std(prob_array)
     prob_array_z = (prob_array - ave_prob) / std_prob
 
-    # sum_arr = sum_arr+input_list[0]+input_list[1]+input_list[2]+(input_list[3] + input_list[4] + input_list[5] + input_list[6])/5000000.00
-    if alpha == 1:
-        sum_arr = sum_arr + dot_array_z + prob_array_z
-    else:
-        sum_arr = sum_arr + (alpha) * dot_array_z + (1 - alpha) * prob_array_z
-    prob_arr = input_list[3] + input_list[4] + input_list[5] + input_list[6]
+    sum_arr = alpha * dot_array_z + (1 - alpha) * prob_array_z
+
     best = np.amax(sum_arr)
     best_prob = np.amax(prob_array_z)
     trans = np.unravel_index(sum_arr.argmax(), sum_arr.shape)
@@ -457,7 +454,7 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
         )
 
         if showPDB:
-            show_vec(mrc_target.orig,
+            save_pdb(mrc_target.orig,
                      result_mrc["vec"],
                      result_mrc["data"],
                      sco_arr,
@@ -732,7 +729,7 @@ def search_map_fft_prob(mrc_target, mrc_input,
         )
 
         if showPDB:
-            show_vec(mrc_target.orig,
+            save_pdb(mrc_target.orig,
                      result_mrc["vec"],
                      result_mrc["data"],
                      sco_arr,
