@@ -354,13 +354,11 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
 
     print()
 
-    refined_score = []
     if ang > 5.0:
-
-        # setup all the angles for refinement
-        # initialize the refinement list by ±5 degrees
-        refine_ang_list = []
+        print("###Start Refining###")
+        refined_list = []
         for result_mrc in sorted_topN:
+            refined_score = []
             ang = result_mrc["angle"]
             ang_list = np.array(
                 np.meshgrid(
@@ -370,49 +368,84 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
                 )
             ).T.reshape(-1, 3)
 
-            # sanity check
+            # remove duplicates
             ang_list = ang_list[(ang_list[:, 0] < 360) &
                                 (ang_list[:, 1] < 360) &
                                 (ang_list[:, 2] < 180)]
 
+            # make sure the angles are in the range of 0-360
             ang_list[ang_list < 0] += 360
 
-            refine_ang_list.append(ang_list)
+            for angle in tqdm(ang_list, desc="Refining Rotation"):
+                vec_score, vec_trans, new_vec, new_data = rot_and_search_fft(mrc_search.data,
+                                                                             mrc_search.vec,
+                                                                             angle,
+                                                                             target_list,
+                                                                             mrc_target,
+                                                                             (a, b, c),
+                                                                             fft_object,
+                                                                             ifft_object,
+                                                                             mode=mode)
+                refined_score.append({"angle": tuple(angle),
+                                      "vec_score": vec_score * rd3,
+                                      "vec_trans": vec_trans,
+                                      "vec": new_vec,
+                                      "data": new_data})
 
-        refine_ang_list = np.concatenate(refine_ang_list, axis=0)
-
-        # rotate the mrc vector and data according to the list (multithreaded)
-        # with concurrent.futures.ThreadPoolExecutor(max_workers=os.cpu_count() + 4) as executor:
-        #     trans_vec = {executor.submit(rot_mrc, mrc_search.data, mrc_search.vec, angle, ): angle for angle in
-        #                  refine_ang_arr}
-        #     for future in concurrent.futures.as_completed(trans_vec):
-        #         angle = trans_vec[future]
-        #         rot_vec_dict[tuple(angle)] = future.result()[0]
-        #         rot_data_dict[tuple(angle)] = future.result()[1]
-
-        for angle in tqdm(refine_ang_list, desc="Refining Rotation"):
-            vec_score, vec_trans, new_vec, new_data = rot_and_search_fft(mrc_search.data,
-                                                                         mrc_search.vec,
-                                                                         angle,
-                                                                         target_list,
-                                                                         mrc_target,
-                                                                         (a, b, c),
-                                                                         fft_object,
-                                                                         ifft_object,
-                                                                         mode=mode)
-
-            refined_score.append({"angle": tuple(angle),
-                                  "vec_score": vec_score * rd3,
-                                  "vec_trans": vec_trans,
-                                  "vec": new_vec,
-                                  "data": new_data})
-
-        # sort the list to find the TopN with best scores
-        refined_list = sorted(refined_score, key=lambda x: x["vec_score"], reverse=True)[:TopN]
-
+            refined_list.append(max(refined_score, key=lambda x: x["vec_score"]))
     else:
-        # no action taken when refinement is disabled
         refined_list = sorted_topN
+
+    # refined_score = []
+    # if ang > 5.0:
+    #
+    #     # setup all the angles for refinement
+    #     # initialize the refinement list by ±5 degrees
+    #     refine_ang_list = []
+    #     for result_mrc in sorted_topN:
+    #         ang = result_mrc["angle"]
+    #         ang_list = np.array(
+    #             np.meshgrid(
+    #                 [ang[0] - 5, ang[0], ang[0] + 5],
+    #                 [ang[1] - 5, ang[1], ang[1] + 5],
+    #                 [ang[2] - 5, ang[2], ang[2] + 5],
+    #             )
+    #         ).T.reshape(-1, 3)
+    #
+    #         # sanity check
+    #         ang_list = ang_list[(ang_list[:, 0] < 360) &
+    #                             (ang_list[:, 1] < 360) &
+    #                             (ang_list[:, 2] < 180)]
+    #
+    #         ang_list[ang_list < 0] += 360
+    #
+    #         refine_ang_list.append(ang_list)
+    #
+    #     refine_ang_list = np.concatenate(refine_ang_list, axis=0)
+    #
+    #     for angle in tqdm(refine_ang_list, desc="Refining Rotation"):
+    #         vec_score, vec_trans, new_vec, new_data = rot_and_search_fft(mrc_search.data,
+    #                                                                      mrc_search.vec,
+    #                                                                      angle,
+    #                                                                      target_list,
+    #                                                                      mrc_target,
+    #                                                                      (a, b, c),
+    #                                                                      fft_object,
+    #                                                                      ifft_object,
+    #                                                                      mode=mode)
+    #
+    #         refined_score.append({"angle": tuple(angle),
+    #                               "vec_score": vec_score * rd3,
+    #                               "vec_trans": vec_trans,
+    #                               "vec": new_vec,
+    #                               "data": new_data})
+    #
+    #     # sort the list to find the TopN with best scores
+    #     refined_list = sorted(refined_score, key=lambda x: x["vec_score"], reverse=True)[:TopN]
+    #
+    # else:
+    #     # no action taken when refinement is disabled
+    #     refined_list = sorted_topN
 
     # Write result to PDB files
     if showPDB:
@@ -627,13 +660,11 @@ def search_map_fft_prob(mrc_target, mrc_input,
         print("M", str(idx + 1), x)
 
     # 5 degrees local refinement search
-    refined_score = []
     if ang > 5.0:
-        # Search for +5.0 and -5.0 degree rotation.
         print("\n###Start Refining###")
-
-        refine_ang_list = []
+        refined_list = []
         for result_mrc in sorted_top_n:
+            refined_score = []
             ang = result_mrc["angle"]
             ang_list = np.array(
                 np.meshgrid(
@@ -650,39 +681,34 @@ def search_map_fft_prob(mrc_target, mrc_input,
 
             # make sure the angles are in the range of 0-360
             ang_list[ang_list < 0] += 360
-            # compose the list
-            refine_ang_list.append(ang_list)
 
-        refine_ang_list = np.concatenate(refine_ang_list, axis=0)
+            for ang in tqdm(ang_list, desc="Local Refining"):
+                vec_score, vec_trans, prob_score, prob_trans, mixed_score, mixed_trans, r_vec, r_data = rot_and_search_fft_prob(
+                    mrc_input.data,
+                    mrc_input.vec,
+                    mrc_search_p1.data,
+                    mrc_search_p2.data,
+                    mrc_search_p3.data,
+                    mrc_search_p4.data,
+                    ang,
+                    target_list,
+                    alpha,
+                    (a, b, c), fft_object, ifft_object,
+                    ret_data=True,
+                    vstd=vstd, vave=vave, pstd=pstd, pave=pave)
 
-        for ang in tqdm(refine_ang_list, desc="Local Refining"):
-            vec_score, vec_trans, prob_score, prob_trans, mixed_score, mixed_trans, r_vec, r_data = rot_and_search_fft_prob(
-                mrc_input.data,
-                mrc_input.vec,
-                mrc_search_p1.data,
-                mrc_search_p2.data,
-                mrc_search_p3.data,
-                mrc_search_p4.data,
-                ang,
-                target_list,
-                alpha,
-                (a, b, c), fft_object, ifft_object,
-                ret_data=True,
-                vstd=vstd, vave=vave, pstd=pstd, pave=pave)
+                refined_score.append(
+                    {"angle": tuple(ang),
+                     "vec_score": vec_score * rd3,
+                     "vec_trans": vec_trans,
+                     "vec": r_vec,
+                     "data": r_data,
+                     "prob_score": prob_score * rd3,
+                     "prob_trans": prob_trans,
+                     "mixed_score": mixed_score * rd3,
+                     "mixed_trans": mixed_trans})
 
-            refined_score.append(
-                {"angle": tuple(ang),
-                 "vec_score": vec_score * rd3,
-                 "vec_trans": vec_trans,
-                 "vec": r_vec,
-                 "data": r_data,
-                 "prob_score": prob_score * rd3,
-                 "prob_trans": prob_trans,
-                 "mixed_score": mixed_score * rd3,
-                 "mixed_trans": mixed_trans})
-
-        refined_list = sorted(refined_score, key=lambda x: x["mixed_score"], reverse=True)[:TopN]  # Sort by mixed score
-
+            refined_list.append(max(refined_score, key=lambda x: x["mixed_score"]))
     else:
         refined_list = sorted_top_n
 

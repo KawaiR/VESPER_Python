@@ -67,6 +67,7 @@ def mrc_set_vox_size(mrc, thr=0.00, voxel_size=7.0):
 
     return mrc, mrc_new
 
+
 # @numba.jit(nopython=True)
 # def calc(stp, endp, pos, mrc1_data, fsiv):
 #     """Vectorized version of calc"""
@@ -93,6 +94,30 @@ def mrc_set_vox_size(mrc, thr=0.00, voxel_size=7.0):
 #     v = np.array([np.sum(d * xx), np.sum(d * yy), np.sum(d * zz)])
 #
 #     return dtotal, v
+
+@numba.jit(nopython=True)
+def calc_prob(stp, endp, pos, density_data, prob_data, fsiv):
+    """Calculate the density and vector in resized map using Gaussian interpolation in original MRC density map"""
+    dtotal = 0.0
+    pos2 = np.zeros((3,))
+
+    for xp in range(stp[0], endp[0]):
+        rx = float(xp) - pos[0]
+        rx = rx ** 2
+        for yp in range(stp[1], endp[1]):
+            ry = float(yp) - pos[1]
+            ry = ry ** 2
+            for zp in range(stp[2], endp[2]):
+                rz = float(zp) - pos[2]
+                rz = rz ** 2
+                d2 = rx + ry + rz
+                v = prob_data[xp][yp][zp] * density_data[xp][yp][zp] * np.exp(-1.5 * d2 * fsiv)
+                dtotal += v
+                pos2[0] += v * xp
+                pos2[1] += v * yp
+                pos2[2] += v * zp
+
+    return dtotal, pos2
 
 
 @numba.jit(nopython=True)
@@ -140,18 +165,15 @@ def calc_avg(stp, endp, prob_data, mrc_data):
     return np.average(selected, weights=weights)
 
 
-def fastVEC(src, dest, dreso=16.0):
-    src_xwidth = src.xwidth
-    src_orig = src.orig
+def fastVEC(src, dest, dreso=16.0, prob_map_threshold=0.5, density_map=None):
     src_dims = np.array((src.xdim, src.ydim, src.zdim))
-    dest_xwidth = dest.xwidth
-    dest_orig = dest.orig
     dest_dims = np.array((dest.xdim, dest.ydim, dest.zdim))
 
-    dest_data, dest_vec = doFastVEC(src_xwidth, src_orig, src_dims, src.data,
-                                    dest_xwidth, dest_orig, dest_dims, dest.data, dest.vec,
-                                    dreso)
+    dest_data, dest_vec = doFastVEC(src.xwidth, src.orig, src_dims, src.data,
+                                    dest.xwidth, dest.orig, dest_dims, dest.data, dest.vec,
+                                    dreso, density_map=density_map)
 
+    # calculate map statistics
     dsum = np.sum(dest_data)
     Nact = np.count_nonzero(dest_data)
     ave = np.mean(dest_data[dest_data > 0])
@@ -164,6 +186,7 @@ def fastVEC(src, dest, dreso=16.0):
                                                                                       std=std,
                                                                                       std_norm=std_norm_ave))
 
+    # update the dest object with the new data and vectors
     dest.data = dest_data
     dest.vec = dest_vec
     dest.dsum = dsum
@@ -176,15 +199,14 @@ def fastVEC(src, dest, dreso=16.0):
 
 
 @numba.jit(nopython=True)
-def doFastVEC(src_xwidth, src_orig, src_dims, src_data, dest_xwidth, dest_orig, dest_dims, dest_data, dest_vec,
-              dreso=16.0):
+def doFastVEC(src_xwidth, src_orig, src_dims, src_data,
+              dest_xwidth, dest_orig, dest_dims, dest_data, dest_vec,
+              dreso, density_map):
     gstep = src_xwidth
     fs = (dreso / gstep) * 0.5
     fs = fs ** 2
     fsiv = 1.0 / fs
     fmaxd = (dreso / gstep) * 2.0
-
-    # print("#maxd={fmaxd}".format(fmaxd=fmaxd), "#fsiv=" + str(fsiv))
 
     for x in range(dest_dims[0]):
         for y in range(dest_dims[1]):
@@ -232,10 +254,13 @@ def doFastVEC(src_xwidth, src_orig, src_dims, src_data, dest_xwidth, dest_orig, 
                 # compute the total density
                 dtotal, pos2 = calc(stp, endp, pos, src_data, fsiv)
 
-                dest_data[x][y][z] = dtotal
+                if density_map is not None:
+                    dtotal, pos2 = calc_prob(stp, endp, pos, density_map, src_data, fsiv)
 
                 if dtotal == 0:
                     continue
+
+                dest_data[x][y][z] = dtotal
 
                 rd = 1.0 / dtotal
 
