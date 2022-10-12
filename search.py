@@ -682,6 +682,7 @@ def search_map_fft_prob(mrc_target, mrc_input,
                  "mixed_trans": mixed_trans})
 
         refined_list = sorted(refined_score, key=lambda x: x["mixed_score"], reverse=True)[:TopN]  # Sort by mixed score
+
     else:
         refined_list = sorted_top_n
 

@@ -1,4 +1,5 @@
 import argparse
+import time
 
 from search import *
 from utils import mrc_set_vox_size, fastVEC
@@ -178,9 +179,13 @@ if __name__ == "__main__":
 
         # fastVEC
         print("\n###Processing MAP1 Resampling###")
-        mrc_N1 = fastVEC(mrc1, mrc_N1, dreso=bandwidth, density_map=mrc1.data)
+        # mrc_N1 = fastVEC(mrc1, mrc_N1, dreso=bandwidth, density_map=mrc1.data)
+        mrc_N1 = fastVEC(mrc1, mrc_N1, dreso=bandwidth)
         print("\n###Processing MAP2 Resampling###")
-        mrc_N2 = fastVEC(mrc2, mrc_N2, dreso=bandwidth, density_map=mrc2.data)
+        start_time = time.time()
+        # mrc_N2 = fastVEC(mrc2, mrc_N2, dreso=bandwidth, density_map=mrc2.data)
+        mrc_N2 = fastVEC(mrc2, mrc_N2, dreso=bandwidth)
+        print("--- %s seconds ---" % (time.time() - start_time))
         print()
 
         # search map
@@ -338,20 +343,32 @@ if __name__ == "__main__":
                 mrc.data = np.zeros((max_dim, max_dim, max_dim), dtype="float32")
                 mrc.vec = np.zeros((max_dim, max_dim, max_dim, 3), dtype="float32")
 
-            print("\n###Processing MAP1 Resampling###")
+            mrc_N1 = fastVEC(mrc1, mrc_N1, dreso=bandwidth)
+            mrc_N1_p1 = fastVEC(mrc1_p1, mrc_N1_p1, dreso=bandwidth)
+            mrc_N1_p2 = fastVEC(mrc1_p2, mrc_N1_p2, dreso=bandwidth)
+            mrc_N1_p3 = fastVEC(mrc1_p3, mrc_N1_p3, dreso=bandwidth)
+            mrc_N1_p4 = fastVEC(mrc1_p4, mrc_N1_p4, dreso=bandwidth)
 
-            mrc_N1 = fastVEC(mrc1, mrc_N1, dreso=bandwidth, density_map=mrc1.data)
-            mrc_N1_p1 = fastVEC(mrc1_p1, mrc_N1_p1, dreso=bandwidth, prob_map=True, density_map=mrc1.data)
-            mrc_N1_p2 = fastVEC(mrc1_p2, mrc_N1_p2, dreso=bandwidth, prob_map=True, density_map=mrc1.data)
-            mrc_N1_p3 = fastVEC(mrc1_p3, mrc_N1_p3, dreso=bandwidth, prob_map=True, density_map=mrc1.data)
-            mrc_N1_p4 = fastVEC(mrc1_p4, mrc_N1_p4, dreso=bandwidth, prob_map=True, density_map=mrc1.data)
+            mrc_N2 = fastVEC(mrc2, mrc_N2, dreso=bandwidth)
+            mrc_N2_p1 = fastVEC(mrc2_p1, mrc_N2_p1, dreso=bandwidth)
+            mrc_N2_p2 = fastVEC(mrc2_p2, mrc_N2_p2, dreso=bandwidth)
+            mrc_N2_p3 = fastVEC(mrc2_p3, mrc_N2_p3, dreso=bandwidth)
+            mrc_N2_p4 = fastVEC(mrc2_p4, mrc_N2_p4, dreso=bandwidth)
 
-            print("\n###Processing MAP2 Resampling###")
-            mrc_N2 = fastVEC(mrc2, mrc_N2, dreso=bandwidth, density_map=mrc2.data)
-            mrc_N2_p1 = fastVEC(mrc2_p1, mrc_N2_p1, dreso=bandwidth, prob_map=True, density_map=mrc2.data)
-            mrc_N2_p2 = fastVEC(mrc2_p2, mrc_N2_p2, dreso=bandwidth, prob_map=True, density_map=mrc2.data)
-            mrc_N2_p3 = fastVEC(mrc2_p3, mrc_N2_p3, dreso=bandwidth, prob_map=True, density_map=mrc2.data)
-            mrc_N2_p4 = fastVEC(mrc2_p4, mrc_N2_p4, dreso=bandwidth, prob_map=True, density_map=mrc2.data)
+            # print("\n###Processing MAP1 Resampling###")
+            #
+            # mrc_N1 = fastVEC(mrc1, mrc_N1, dreso=bandwidth, density_map=mrc1.data)
+            # mrc_N1_p1 = fastVEC(mrc1_p1, mrc_N1_p1, dreso=bandwidth, prob_map=True, density_map=mrc1.data)
+            # mrc_N1_p2 = fastVEC(mrc1_p2, mrc_N1_p2, dreso=bandwidth, prob_map=True, density_map=mrc1.data)
+            # mrc_N1_p3 = fastVEC(mrc1_p3, mrc_N1_p3, dreso=bandwidth, prob_map=True, density_map=mrc1.data)
+            # mrc_N1_p4 = fastVEC(mrc1_p4, mrc_N1_p4, dreso=bandwidth, prob_map=True, density_map=mrc1.data)
+            #
+            # print("\n###Processing MAP2 Resampling###")
+            # mrc_N2 = fastVEC(mrc2, mrc_N2, dreso=bandwidth, density_map=mrc2.data)
+            # mrc_N2_p1 = fastVEC(mrc2_p1, mrc_N2_p1, dreso=bandwidth, prob_map=True, density_map=mrc2.data)
+            # mrc_N2_p2 = fastVEC(mrc2_p2, mrc_N2_p2, dreso=bandwidth, prob_map=True, density_map=mrc2.data)
+            # mrc_N2_p3 = fastVEC(mrc2_p3, mrc_N2_p3, dreso=bandwidth, prob_map=True, density_map=mrc2.data)
+            # mrc_N2_p4 = fastVEC(mrc2_p4, mrc_N2_p4, dreso=bandwidth, prob_map=True, density_map=mrc2.data)
 
             search_map_fft_prob(mrc_N1, mrc_N2, mrc_N1_p1, mrc_N1_p2, mrc_N1_p3, mrc_N1_p4, mrc_N2_p1, mrc_N2_p2,
                                 mrc_N2_p3, mrc_N2_p4, ang=angle_spacing, alpha=alpha, TopN=topN,

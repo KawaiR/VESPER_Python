@@ -32,7 +32,7 @@ def mrc_set_vox_size(mrc, thr=0.00, voxel_size=7.0):
     non_zero_index_list = np.array(np.nonzero(mrc.data)).T
     cent_arr = np.array(mrc.cent)
     d2_list = np.linalg.norm(non_zero_index_list - cent_arr, axis=1)
-    dmax = max(d2_list)
+    dmax = np.max(d2_list)
 
     print()
     print("#dmax=" + str(dmax / mrc.xwidth))
@@ -66,6 +66,33 @@ def mrc_set_vox_size(mrc, thr=0.00, voxel_size=7.0):
           str(new_orig[2]))
 
     return mrc, mrc_new
+
+# @numba.jit(nopython=True)
+# def calc(stp, endp, pos, mrc1_data, fsiv):
+#     """Vectorized version of calc"""
+#
+#     xx = np.arange(stp[0], endp[0], 1)
+#     yy = np.arange(stp[1], endp[1], 1)
+#     zz = np.arange(stp[2], endp[2], 1)
+#
+#     xx = np.expand_dims(xx, axis=1)
+#     xx = np.expand_dims(xx, axis=1)
+#     yy = np.expand_dims(yy, axis=1)
+#     yy = np.expand_dims(yy, axis=0)
+#     zz = np.expand_dims(zz, axis=0)
+#     zz = np.expand_dims(zz, axis=0)
+#
+#     # calculate the distance between the center of the voxel and the center of the particle
+#     d2 = (xx - pos[0])**2 + (yy - pos[1])**2 + (zz - pos[2])**2
+#
+#     # calculate the density and vector in resized map using Gaussian interpolation in original MRC density map
+#     d = np.exp(- 1.5 * d2 * fsiv) * mrc1_data[stp[0]:endp[0], stp[1]:endp[1], stp[2]:endp[2]]
+#     dtotal = np.sum(d)
+#
+#     # calculate the vector
+#     v = np.array([np.sum(d * xx), np.sum(d * yy), np.sum(d * zz)])
+#
+#     return dtotal, v
 
 
 @numba.jit(nopython=True)
@@ -113,11 +140,7 @@ def calc_avg(stp, endp, prob_data, mrc_data):
     return np.average(selected, weights=weights)
 
 
-def fastVEC(src, dest, dreso=16.0, prob_map=False, density_map=None):
-    if prob_map is True and density_map is None:
-        print("Error: density_map is not defined")
-        exit(-1)
-
+def fastVEC(src, dest, dreso=16.0):
     src_xwidth = src.xwidth
     src_orig = src.orig
     src_dims = np.array((src.xdim, src.ydim, src.zdim))
@@ -125,19 +148,12 @@ def fastVEC(src, dest, dreso=16.0, prob_map=False, density_map=None):
     dest_orig = dest.orig
     dest_dims = np.array((dest.xdim, dest.ydim, dest.zdim))
 
-    # type cast to ensure function signature match
-    dest_data, dest_vec = doFastVEC(src_xwidth, src_orig, src_dims.astype(np.int32), src.data,
-                                    dest_xwidth, dest_orig, dest_dims.astype(np.int32),
-                                    dest.vec, dest.data, dreso, prob_map, density_map)
+    dest_data, dest_vec = doFastVEC(src_xwidth, src_orig, src_dims, src.data,
+                                    dest_xwidth, dest_orig, dest_dims, dest.data, dest.vec,
+                                    dreso)
 
     dsum = np.sum(dest_data)
     Nact = np.count_nonzero(dest_data)
-
-    # gracefully handle the case where no active voxels are found
-    if Nact == 0:
-        print("Error: No density value after resampling. Is the voxel spacing parameter too large?")
-        exit(-1)
-
     ave = np.mean(dest_data[dest_data > 0])
     std = np.linalg.norm(dest_data[dest_data > 0])
     std_norm_ave = np.linalg.norm(dest_data[dest_data > 0] - ave)
@@ -159,16 +175,9 @@ def fastVEC(src, dest, dreso=16.0, prob_map=False, density_map=None):
     return dest
 
 
-# original function signature for linux platform
-# @numba.njit((numba.float64, numba.float32[:], numba.int64[:], numba.float32[:, :, :], numba.float64, numba.float64[:],
-#              numba.int64[:], numba.float32[:, :, :, :], numba.float32[:, :, :], numba.float64, numba.boolean,
-#              numba.float32[:, :, :]), parallel=True)
-@numba.njit((numba.float64, numba.float32[:], numba.int32[:], numba.float32[:, :, :], numba.float64, numba.float64[:],
-             numba.int32[:], numba.float32[:, :, :, :], numba.float32[:, :, :], numba.float64, numba.boolean,
-             numba.float32[:, :, :]))
-def doFastVEC(src_xwidth, src_orig, src_dims, src_data,
-              dest_xwidth, dest_orig, dest_dims, dest_vec, dest_data,
-              dreso=16.0, prob_map=False, density_map=None):
+@numba.jit(nopython=True)
+def doFastVEC(src_xwidth, src_orig, src_dims, src_data, dest_xwidth, dest_orig, dest_dims, dest_data, dest_vec,
+              dreso=16.0):
     gstep = src_xwidth
     fs = (dreso / gstep) * 0.5
     fs = fs ** 2
@@ -220,52 +229,167 @@ def doFastVEC(src_xwidth, src_orig, src_dims, src_data,
                 if endp[2] >= src_dims[2]:
                     endp[2] = src_dims[2]
 
-                if prob_map:
-                    # calculate weighted average over the region
-                    dest_data[x][y][z] = calc_avg(stp, endp, src_data, density_map)
-                else:
-                    # compute the total density and vector with Gaussian weight
-                    dtotal, pos2 = calc(stp, endp, pos, src_data, fsiv)
-                    dest_data[x][y][z] = dtotal
-                    if dtotal == 0:
-                        continue
+                # compute the total density
+                dtotal, pos2 = calc(stp, endp, pos, src_data, fsiv)
 
-                    # vector normalization
-                    rd = 1.0 / dtotal
-                    pos2 *= rd
-                    tmpcd = pos2 - pos
-                    dvec = np.sqrt(tmpcd[0] ** 2 + tmpcd[1] ** 2 + tmpcd[2] ** 2)
+                dest_data[x][y][z] = dtotal
 
-                    if dvec == 0:
-                        dvec = 1.0
+                if dtotal == 0:
+                    continue
 
-                    rdvec = 1.0 / dvec
+                rd = 1.0 / dtotal
 
-                    dest_vec[x][y][z] = tmpcd * rdvec
+                pos2 *= rd
+
+                tmpcd = pos2 - pos
+
+                dvec = np.sqrt(tmpcd[0] ** 2 + tmpcd[1] ** 2 + tmpcd[2] ** 2)
+
+                if dvec == 0:
+                    dvec = 1.0
+
+                rdvec = 1.0 / dvec
+
+                dest_vec[x][y][z] = tmpcd * rdvec
 
     return dest_data, dest_vec
 
 
-# @numba.jit(nopython=True)
-# def rot_pos_mtx(mtx, vec):
-#     """Rotate a vector or matrix using a rotation matrix.
+# def fastVEC(src, dest, dreso=16.0, prob_map=False, density_map=None):
+#     if prob_map is True and density_map is None:
+#         print("Error: density_map is not defined")
+#         exit(-1)
 #
-#     Args:
-#         mtx (numpy.array): the rotation matrix
-#         vec (numpy.array): the vector/matrix to be rotated
+#     src_xwidth = src.xwidth
+#     src_orig = src.orig
+#     src_dims = np.array((src.xdim, src.ydim, src.zdim))
+#     dest_xwidth = dest.xwidth
+#     dest_orig = dest.orig
+#     dest_dims = np.array((dest.xdim, dest.ydim, dest.zdim))
 #
-#     Returns:
-#         ret (numpy.array): the rotated vector/matrix
-#     """
-#     mtx = mtx.astype(np.float32)
-#     vec = vec.astype(np.float32)
+#     # type cast to ensure function signature match
+#     dest_data, dest_vec = doFastVEC(src_xwidth, src_orig, src_dims.astype(np.int32), src.data,
+#                                     dest_xwidth, dest_orig, dest_dims.astype(np.int32),
+#                                     dest.vec, dest.data, dreso, prob_map, density_map)
 #
-#     ret = vec @ mtx
+#     dsum = np.sum(dest_data)
+#     Nact = np.count_nonzero(dest_data)
 #
-#     return ret
+#     # gracefully handle the case where no active voxels are found
+#     if Nact == 0:
+#         print("Error: No density value after resampling. Is the voxel spacing parameter too large?")
+#         exit(-1)
+#
+#     ave = np.mean(dest_data[dest_data > 0])
+#     std = np.linalg.norm(dest_data[dest_data > 0])
+#     std_norm_ave = np.linalg.norm(dest_data[dest_data > 0] - ave)
+#
+#     print("#MAP SUM={sum} COUNT={cnt} AVE={ave} STD={std} STD_norm={std_norm}".format(sum=dsum,
+#                                                                                       cnt=Nact,
+#                                                                                       ave=ave,
+#                                                                                       std=std,
+#                                                                                       std_norm=std_norm_ave))
+#
+#     dest.data = dest_data
+#     dest.vec = dest_vec
+#     dest.dsum = dsum
+#     dest.Nact = Nact
+#     dest.ave = ave
+#     dest.std = std
+#     dest.std_norm_ave = std_norm_ave
+#
+#     return dest
+#
+#
+# # original function signature for linux platform
+# # @numba.njit((numba.float64, numba.float32[:], numba.int64[:], numba.float32[:, :, :], numba.float64, numba.float64[:],
+# #              numba.int64[:], numba.float32[:, :, :, :], numba.float32[:, :, :], numba.float64, numba.boolean,
+# #              numba.float32[:, :, :]), parallel=True)
+# @numba.njit((numba.float64, numba.float32[:], numba.int32[:], numba.float32[:, :, :], numba.float64, numba.float64[:],
+#              numba.int32[:], numba.float32[:, :, :, :], numba.float32[:, :, :], numba.float64, numba.boolean,
+#              numba.float32[:, :, :]))
+# def doFastVEC(src_xwidth, src_orig, src_dims, src_data,
+#               dest_xwidth, dest_orig, dest_dims, dest_vec, dest_data,
+#               dreso=16.0, prob_map=False, density_map=None):
+#
+#     gstep = src_xwidth  # grid step
+#     fs = (dreso / gstep) * 0.5  # 0.5 is the factor to make the Gaussian kernel narrower
+#     fs = fs ** 2  # fs is the variance of the Gaussian kernel
+#     fsiv = 1.0 / fs  # fsiv is the inverse of the variance of the Gaussian kernel
+#     fmaxd = (dreso / gstep) * 2.0
+#
+#     # print("#maxd={fmaxd}".format(fmaxd=fmaxd), "#fsiv=" + str(fsiv))
+#
+#     for x in range(dest_dims[0]):
+#         for y in range(dest_dims[1]):
+#             for z in range(dest_dims[2]):
+#
+#                 xyz_arr = np.array((x, y, z))
+#                 pos = (xyz_arr * dest_xwidth + dest_orig - src_orig) / src_xwidth
+#
+#                 # check density
+#
+#                 if (
+#                         pos[0] < 0
+#                         or pos[1] < 0
+#                         or pos[2] < 0
+#                         or pos[0] >= src_dims[0]
+#                         or pos[1] >= src_dims[1]
+#                         or pos[2] >= src_dims[2]
+#                 ):
+#                     continue
+#
+#                 if src_data[int(pos[0])][int(pos[1])][int(pos[2])] == 0:
+#                     continue
+#
+#                 # Start Point
+#                 stp = (pos - fmaxd).astype(np.int32)
+#
+#                 # set start and end point
+#                 if stp[0] < 0:
+#                     stp[0] = 0
+#                 if stp[1] < 0:
+#                     stp[1] = 0
+#                 if stp[2] < 0:
+#                     stp[2] = 0
+#
+#                 # End Point
+#                 endp = (pos + fmaxd + 1).astype(np.int32)
+#
+#                 if endp[0] >= src_dims[0]:
+#                     endp[0] = src_dims[0]
+#                 if endp[1] >= src_dims[1]:
+#                     endp[1] = src_dims[1]
+#                 if endp[2] >= src_dims[2]:
+#                     endp[2] = src_dims[2]
+#
+#                 if prob_map:
+#                     # calculate weighted average over the region
+#                     dest_data[x][y][z] = calc_avg(stp, endp, src_data, density_map)
+#                 else:
+#                     # compute the total density and vector with Gaussian weight
+#                     dtotal, pos2 = calc(stp, endp, pos, src_data, fsiv)
+#                     dest_data[x][y][z] = dtotal
+#                     if dtotal == 0:
+#                         continue
+#
+#                     # vector normalization
+#                     rd = 1.0 / dtotal
+#                     pos2 *= rd
+#                     tmpcd = pos2 - pos
+#                     dvec = np.sqrt(tmpcd[0] ** 2 + tmpcd[1] ** 2 + tmpcd[2] ** 2)
+#
+#                     if dvec == 0:
+#                         dvec = 1.0
+#
+#                     rdvec = 1.0 / dvec
+#
+#                     dest_vec[x][y][z] = tmpcd * rdvec
+#
+#     return dest_data, dest_vec
 
 
-def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, interp=None):
+def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, interp="linear"):
     """A function to rotation the density and vector array by a specified angle.
 
     Args:
@@ -457,7 +581,7 @@ def save_pdb(origin,
 
 
 @numba.jit(forceobj=True)
-def rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx, interp=None):
+def rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx, interp="linear"):
     """
     It takes in a 3D array, and a 3x3 rotation matrix, and returns a 3D array that is the result of rotating the input array
     by the rotation matrix
