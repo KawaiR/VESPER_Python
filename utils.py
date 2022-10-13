@@ -4,7 +4,9 @@ import numba
 import numpy as np
 import pyfftw
 from scipy.interpolate import RegularGridInterpolator
+from scipy.spatial.transform import Rotation as R
 
+interp = None
 
 def mrc_set_vox_size(mrc, thr=0.00, voxel_size=7.0):
     """Set the voxel size for the specified MrcObj
@@ -414,13 +416,14 @@ def doFastVEC(src_xwidth, src_orig, src_dims, src_data,
 #     return dest_data, dest_vec
 
 
-def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, interp="linear"):
+def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, interp=interp):
     """A function to rotation the density and vector array by a specified angle.
 
     Args:
         orig_mrc_data (numpy.array): the data array to be rotated
         orig_mrc_vec (numpy.array): the vector array to be rotated
         mtx (numpy.array): the rotation matrix
+        interp (str): the interpolation method
 
     Returns:
         new_vec_array (numpy.array): rotated vector array
@@ -606,7 +609,7 @@ def save_pdb(origin,
 
 
 @numba.jit(forceobj=True)
-def rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx, interp="linear"):
+def rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx, interp=interp):
     """
     It takes in a 3D array, and a 3x3 rotation matrix, and returns a 3D array that is the result of rotating the input array
     by the rotation matrix
@@ -947,12 +950,20 @@ def calc_angle_comb(ang_interval):
         i += ang_interval
 
     i = 0
-    while i <= 180:
+    while i < 180:
         z_angle.append(i)
         i += ang_interval
 
     angle_comb = np.array(np.meshgrid(x_angle, y_angle, z_angle)).T.reshape(-1, 3)
-    return angle_comb
+    seen = set()
+    uniq = []
+    for ang in angle_comb:
+        quat = tuple(np.round(R.from_euler('ZYX', ang, degrees=True).as_quat(), 4))
+        if quat not in seen:
+            uniq.append(ang)
+            seen.add(quat)
+
+    return uniq
 
 
 def convert_trans(cen1, cen2, r, trans, xwidth2, dim):

@@ -3,7 +3,7 @@ import time
 
 from search import *
 from utils import mrc_set_vox_size, fastVEC
-
+import utils
 
 def alpha_is_zero(objA, objB, threshold1, threshold2, bandwidth, voxel_spacing, angle_spacing, topN, showPDB, modeVal,
                   evalMode):
@@ -54,8 +54,7 @@ def alpha_is_zero(objA, objB, threshold1, threshold2, bandwidth, voxel_spacing, 
         modeVal = "Laplacian"
 
     search_map_fft(tgt_map_resampled, input_map_resampled, TopN=topN, ang=angle_spacing, mode=modeVal,
-                   is_eval_mode=evalMode, showPDB=showPDB,
-                   folder=folder)
+                   is_eval_mode=evalMode, showPDB=showPDB, folder=folder)
 
 
 if __name__ == "__main__":
@@ -68,8 +67,8 @@ if __name__ == "__main__":
     # original VESPER menu
     orig.add_argument('-a', type=str, required=True, help='MAP1.mrc (large)')
     orig.add_argument('-b', type=str, required=True, help='MAP2.mrc (small)')
-    orig.add_argument('-t', type=float, help='Threshold of density map1')
-    orig.add_argument('-T', type=float, help='Threshold of density map2')
+    orig.add_argument('-t', type=float, default=0.0, help='Threshold of density map1')
+    orig.add_argument('-T', type=float, default=0.0, help='Threshold of density map2')
     orig.add_argument('-g', type=float, default=16.0,
                       help='Bandwidth of the Gaussian filter def=16.0, sigma = 0.5*[value entered]')
     orig.add_argument('-s', type=float, default=7.0, help='Sampling voxel spacing def=7.0')
@@ -83,6 +82,7 @@ if __name__ == "__main__":
                                                         'L: Laplacian Filtering Mode')
     orig.add_argument('-E', type=bool, default=False, help='Evaluation mode of the current position def=false')
     orig.add_argument('-o', type=str, default=None, help='Output folder name')
+    orig.add_argument('-I', type=str, default=None, help='Interpolation mode def=None')
 
     # secondary structure matching menu
     prob.add_argument('-a', type=str, required=True, help='MAP1.mrc (large)')
@@ -91,8 +91,8 @@ if __name__ == "__main__":
     prob.add_argument('-npb', type=str, required=True, help='numpy array for Predictions for map 2')
     prob.add_argument('-alpha', type=float, default=0.5, required=False, help='The weighting parameter for alpha '
                                                                               'mixing def=0.0')
-    prob.add_argument('-t', type=float, help='Threshold of density map1')
-    prob.add_argument('-T', type=float, help='Threshold of density map2')
+    prob.add_argument('-t', type=float, default=0.0, help='Threshold of density map1')
+    prob.add_argument('-T', type=float, default=0.0, help='Threshold of density map2')
     prob.add_argument('-g', type=float, default=16.0,
                       help='Bandwidth of the Gaussian filter def=16.0, sigma = 0.5*[value entered]')
     prob.add_argument('-s', type=float, default=7.0, help='Sampling voxel spacing def=7.0')
@@ -111,12 +111,16 @@ if __name__ == "__main__":
     prob.add_argument('-pav', type=float, help='Pre-computed average for probability map')
     prob.add_argument('-pstd', type=float, help='Pre-computed standard deviation for probability map')
     prob.add_argument('-o', type=str, default=None, help='Output folder name')
+    prob.add_argument('-I', type=str, default=None, help='Interpolation mode def=None')
 
     args = parser.parse_args()
 
     if args.command == 'orig':
         # output folder
         folder = args.o
+
+        # set interpolation mode
+        utils.interp = args.I
 
         # mrc file paths
         objA = args.a
@@ -126,12 +130,6 @@ if __name__ == "__main__":
         # check for none
         threshold1 = args.t
         threshold2 = args.T
-
-        if threshold1 is None:
-            threshold1 = 0.00
-
-        if threshold2 is None:
-            threshold2 = 0.00
 
         # with default
         bandwidth = args.g
@@ -208,6 +206,9 @@ if __name__ == "__main__":
         # output folder
         folder = args.o
 
+        # set interpolation mode
+        utils.interp = args.I
+
         # mrc file paths
         objA = args.a
         objB = args.b
@@ -228,12 +229,6 @@ if __name__ == "__main__":
 
         # weighting parameter
         alpha = args.alpha
-
-        if threshold1 is None:
-            threshold1 = 0.00
-
-        if threshold2 is None:
-            threshold2 = 0.00
 
         # with default
         bandwidth = args.g
@@ -326,6 +321,17 @@ if __name__ == "__main__":
             mrc2_p2, mrc_N2_p2 = mrc_set_vox_size(mrc2_p2, thr=0.0, voxel_size=voxel_spacing)
             mrc2_p3, mrc_N2_p3 = mrc_set_vox_size(mrc2_p3, thr=0.0, voxel_size=voxel_spacing)
             mrc2_p4, mrc_N2_p4 = mrc_set_vox_size(mrc2_p4, thr=0.0, voxel_size=voxel_spacing)
+
+            # threshold the probability maps
+            # mrc_N1_p1.data[mrc_N1_p1.data < 0.9] = 0.0
+            # mrc_N1_p2.data[mrc_N1_p2.data < 0.9] = 0.0
+            # mrc_N1_p3.data[mrc_N1_p3.data < 0.9] = 0.0
+            # mrc_N1_p4.data[mrc_N1_p4.data < 0.9] = 0.0
+            #
+            # mrc_N2_p1.data[mrc_N2_p1.data < 0.9] = 0.0
+            # mrc_N2_p2.data[mrc_N2_p2.data < 0.9] = 0.0
+            # mrc_N2_p3.data[mrc_N2_p3.data < 0.9] = 0.0
+            # mrc_N2_p4.data[mrc_N2_p4.data < 0.9] = 0.0
 
             mrc_list = [mrc_N1, mrc_N2, mrc_N1_p1, mrc_N1_p2, mrc_N1_p3, mrc_N1_p4, mrc_N2_p1, mrc_N2_p2, mrc_N2_p3,
                         mrc_N2_p4]

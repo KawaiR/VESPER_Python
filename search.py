@@ -6,7 +6,6 @@ from pathlib import Path
 
 import mrcfile
 import pyfftw
-from scipy.spatial.transform import Rotation as R
 from tqdm import tqdm
 
 from utils import *
@@ -501,11 +500,8 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
     return refined_list
 
 
-def search_map_fft_prob(mrc_target, mrc_input,
-                        mrc_P1, mrc_P2, mrc_P3, mrc_P4,
-                        mrc_search_p1, mrc_search_p2, mrc_search_p3, mrc_search_p4,
-                        ang, alpha=0.0, TopN=10,
-                        vave=-1, vstd=-1, pave=-1, pstd=-1,
+def search_map_fft_prob(mrc_target, mrc_input, mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_search_p1, mrc_search_p2,
+                        mrc_search_p3, mrc_search_p4, ang, alpha=0.0, TopN=10, vave=-1, vstd=-1, pave=-1, pstd=-1,
                         showPDB=False, folder=None):
     """The main search function for fining the best superimposition for the target and the query map.
 
