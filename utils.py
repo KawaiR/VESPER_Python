@@ -8,6 +8,7 @@ from scipy.spatial.transform import Rotation as R
 
 interp = None
 
+
 def mrc_set_vox_size(mrc, thr=0.00, voxel_size=7.0):
     """Set the voxel size for the specified MrcObj
 
@@ -38,15 +39,36 @@ def mrc_set_vox_size(mrc, thr=0.00, voxel_size=7.0):
 
     print()
     print("#dmax=" + str(dmax / mrc.xwidth))
-    dmax = dmax * mrc.xwidth
 
     # set new center
     new_cent = mrc.cent * mrc.xwidth + mrc.orig
 
-    tmp_size = 2 * dmax / voxel_size
+    tmp_size = 2 * dmax * mrc.xwidth/ voxel_size
 
     # get the best size suitable for fft operation
-    new_xdim = pyfftw.next_fast_len(int(tmp_size))
+    # new_xdim = pyfftw.next_fast_len(int(tmp_size))
+
+    a = 2
+    while(1):
+        if a > tmp_size:
+            break
+        a *= 2
+
+    b = 3
+    while(1):
+        if b > tmp_size:
+            break
+        b *= 2
+
+    b = 9
+    while(1):
+        if b > tmp_size:
+            break
+        b *= 2
+    if a > b:
+        new_xdim = b
+    else:
+        new_xdim = a
 
     # set new origins
     new_orig = new_cent - 0.5 * new_xdim * voxel_size
@@ -113,7 +135,8 @@ def calc_prob(stp, endp, pos, density_data, prob_data, fsiv):
                 rz = float(zp) - pos[2]
                 rz = rz ** 2
                 d2 = rx + ry + rz
-                v = prob_data[xp][yp][zp] * density_data[xp][yp][zp] * np.exp(-1.5 * d2 * fsiv)
+                # v = density_data[xp][yp][zp] * prob_data[xp][yp][zp] *  np.exp(-1.5 * d2 * fsiv)
+                v = prob_data[xp][yp][zp] * np.exp(-1.5 * d2 * fsiv)
                 dtotal += v
                 pos2[0] += v * xp
                 pos2[1] += v * yp
@@ -167,7 +190,7 @@ def calc_avg(stp, endp, prob_data, mrc_data):
     return np.average(selected, weights=weights)
 
 
-def fastVEC(src, dest, dreso=16.0, prob_map_threshold=0.5, density_map=None):
+def fastVEC(src, dest, dreso=16.0, density_map=None):
     src_dims = np.array((src.xdim, src.ydim, src.zdim))
     dest_dims = np.array((dest.xdim, dest.ydim, dest.zdim))
 
@@ -209,6 +232,8 @@ def doFastVEC(src_xwidth, src_orig, src_dims, src_data,
     fs = fs ** 2
     fsiv = 1.0 / fs
     fmaxd = (dreso / gstep) * 2.0
+    print("#maxd=", fmaxd)
+    print("#fsiv=", fsiv)
 
     for x in range(dest_dims[0]):
         for y in range(dest_dims[1]):
@@ -254,10 +279,10 @@ def doFastVEC(src_xwidth, src_orig, src_dims, src_data,
                     endp[2] = src_dims[2]
 
                 # compute the total density
-                dtotal, pos2 = calc(stp, endp, pos, src_data, fsiv)
-
                 if density_map is not None:
                     dtotal, pos2 = calc_prob(stp, endp, pos, density_map, src_data, fsiv)
+                else:
+                    dtotal, pos2 = calc(stp, endp, pos, src_data, fsiv)
 
                 if dtotal == 0:
                     continue
@@ -415,6 +440,78 @@ def doFastVEC(src_xwidth, src_orig, src_dims, src_data,
 #
 #     return dest_data, dest_vec
 
+# def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx):
+#     """A function to rotation the density and vector array by a specified angle.
+#     Args:
+#         orig_mrc_data (numpy.array): the data array to be rotated
+#         orig_mrc_vec (numpy.array): the vector array to be rotated
+#         angle (float, float, float): the angle of rotation in degrees
+#     Returns:
+#         new_vec_array (numpy.array): rotated vector array
+#         new_data_array (numpy.array): rotated data array
+#     """
+#
+#     # set the dimension to be x dimension as all dimension are the same
+#     dim = orig_mrc_vec.shape[0]
+#
+#     # create array for the positions after rotation
+#     new_pos = np.array(np.meshgrid(np.arange(dim), np.arange(dim), np.arange(dim), )).T.reshape(-1, 3)
+#
+#     # set the rotation center
+#     cent = 0.5 * float(dim)
+#
+#     # get relative new positions from center
+#     new_pos = new_pos - cent
+#
+#     # reversely rotate the new position lists to get old positions
+#     # old_pos = (mtx.T @ new_pos.T).T + cent
+#     old_pos = np.einsum("ij, kj->ki", mtx.T, new_pos) + cent
+#
+#     # concatenate combine two position array horizontally for later filtering
+#     combined_arr = np.hstack((old_pos, new_pos))
+#
+#     # filter values outside the boundaries
+#     in_bound_mask = (
+#             (old_pos[:, 0] >= 0)
+#             & (old_pos[:, 1] >= 0)
+#             & (old_pos[:, 2] >= 0)
+#             & (old_pos[:, 0] < dim)
+#             & (old_pos[:, 1] < dim)
+#             & (old_pos[:, 2] < dim)
+#     )
+#
+#     # get the mask of all the values inside boundary
+#     combined_arr = combined_arr[in_bound_mask]
+#
+#     # convert the index to integer
+#     combined_arr = combined_arr.astype(np.int32)
+#
+#     # get the old index array
+#     index_arr = combined_arr[:, 0:3]
+#
+#     # get the index that has non-zero density by masking
+#     dens_mask = orig_mrc_data[index_arr[:, 0], index_arr[:, 1], index_arr[:, 2]] != 0.0
+#     non_zero_rot_list = combined_arr[dens_mask]
+#
+#     # get the non-zero vec and dens values
+#     non_zero_vec = orig_mrc_vec[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
+#     non_zero_dens = orig_mrc_data[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
+#
+#     # rotate the vectors
+#     new_vec = np.einsum("ij, kj->ki", mtx, non_zero_vec)
+#
+#     # init new vec and dens array
+#     new_vec_array = np.zeros_like(orig_mrc_vec)
+#     new_data_array = np.zeros_like(orig_mrc_data)
+#
+#     # find the new indices
+#     new_ind_arr = (non_zero_rot_list[:, 3:6] + cent).astype(int)
+#
+#     # fill in the values to new vec and dens array
+#     new_vec_array[new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]] = new_vec
+#     new_data_array[new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]] = non_zero_dens
+#
+#     return new_vec_array, new_data_array
 
 def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, interp=interp):
     """A function to rotation the density and vector array by a specified angle.
@@ -435,6 +532,7 @@ def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, interp=interp):
     y = np.linspace(0, Ny - 1, Ny)
     z = np.linspace(0, Nz - 1, Nz)
     xx, yy, zz = np.meshgrid(x, y, z, indexing='ij')
+    # zz, yy, xx = np.meshgrid(z, y, x, indexing='ij')
 
     x_center = x[0] + x[-1] / 2
     y_center = y[0] + y[-1] / 2
@@ -443,7 +541,8 @@ def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, interp=interp):
     # center the coord
     coor = np.array([xx - x_center, yy - y_center, zz - z_center])
     # apply rotation
-    coor_prime = np.tensordot(mtx, coor, axes=((1), (0)))
+    # coor_prime = np.tensordot(np.flip(mtx.T), coor, axes=((0), (1)))
+    coor_prime = np.einsum("il, ljkm->ijkm", mtx.T, coor)
 
     # uncenter the coord
     xx_prime = coor_prime[0] + x_center
@@ -466,6 +565,7 @@ def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, interp=interp):
 
     # get nonzero positions
     x_valid_idx, y_valid_idx, z_valid_idx = np.where(valid_voxel > 0)
+    # z_valid_idx, y_valid_idx, x_valid_idx = np.where(valid_voxel > 0)
 
     # create new arrays to store the final result
     new_data_array = np.zeros_like(orig_mrc_data)
@@ -480,10 +580,21 @@ def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, interp=interp):
         ]
     ).T
 
+    # interp_points = np.array(
+    #     [
+    #         zz_prime[z_valid_idx, y_valid_idx, x_valid_idx],
+    #         yy_prime[z_valid_idx, y_valid_idx, x_valid_idx],
+    #         xx_prime[z_valid_idx, y_valid_idx, x_valid_idx],
+    #     ]
+    # ).T
+
     if interp is not None:
         # create grid interpolator
         data_w_coor = RegularGridInterpolator((x, y, z), orig_mrc_data, method=interp)
         vec_w_coor = RegularGridInterpolator((x, y, z), orig_mrc_vec, method=interp)
+
+        # data_w_coor = RegularGridInterpolator((z, y, x), orig_mrc_data, method=interp)
+        # vec_w_coor = RegularGridInterpolator((z, y, x), orig_mrc_vec, method=interp)
 
         # do interpolation
         interp_result = data_w_coor(interp_points)
@@ -498,10 +609,17 @@ def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, interp=interp):
                                   interp_points[:, 1].astype(np.int32),
                                   interp_points[:, 2].astype(np.int32)]
 
+        # interp_result = orig_mrc_data[interp_points[:, 2].astype(np.int32),
+        #                               interp_points[:, 1].astype(np.int32),
+        #                               interp_points[:, 0].astype(np.int32)]
+        # vec_result = orig_mrc_vec[interp_points[:, 2].astype(np.int32),
+        #                           interp_points[:, 1].astype(np.int32),
+        #                           interp_points[:, 0].astype(np.int32)]
+
     # save interpolated data
+
     new_data_array[x_valid_idx, y_valid_idx, z_valid_idx] = interp_result
-    new_vec_array[x_valid_idx, y_valid_idx, z_valid_idx] = np.swapaxes(np.tensordot(mtx, np.swapaxes(vec_result, 0, 1),
-                                                                                    axes=((0), (0))), 0, 1)
+    new_vec_array[x_valid_idx, y_valid_idx, z_valid_idx] = np.einsum("ij, kj->ki", mtx, vec_result)
 
     return new_vec_array, new_data_array
 
@@ -604,242 +722,241 @@ def save_pdb(origin,
                     )
                     pdb_file.write(atom_header + atom_content + "\n")
                     natm += 1
-
                     nres += 1
 
 
-@numba.jit(forceobj=True)
-def rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx, interp=interp):
-    """
-    It takes in a 3D array, and a 3x3 rotation matrix, and returns a 3D array that is the result of rotating the input array
-    by the rotation matrix
+# @numba.jit(forceobj=True)
+# def rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx, interp=interp):
+#     """
+#     It takes in a 3D array, and a 3x3 rotation matrix, and returns a 3D array that is the result of rotating the input array
+#     by the rotation matrix
+#
+#     :param data: the density map
+#     :param vec: the vector field
+#     :param prob_c1, prob_c2, prob_c3, prob_c4: probability of 4 classes
+#     :param mtx: the rotation matrix
+#     :param interp: interpolation method, defaults to None (optional)
+#     :return: The new_vec_array is the new vector array after rotation. The new_data_array is the new density array after
+#     rotation. The new_p1, new_p2, new_p3, new_p4 are the new probability arrays after rotation.
+#     """
+#
+#     Nx, Ny, Nz = data.shape
+#     x = np.linspace(0, Nx - 1, Nx)
+#     y = np.linspace(0, Ny - 1, Ny)
+#     z = np.linspace(0, Nz - 1, Nz)
+#     xx, yy, zz = np.meshgrid(x, y, z, indexing='ij')
+#
+#     x_center = x[0] + x[-1] / 2
+#     y_center = y[0] + y[-1] / 2
+#     z_center = z[0] + z[-1] / 2
+#
+#     # center the coord
+#     coor = np.array([xx - x_center, yy - y_center, zz - z_center])
+#     # apply rotation
+#     coor_prime = np.tensordot(mtx, coor, axes=((1), (0)))
+#
+#     # uncenter the coord
+#     xx_prime = coor_prime[0] + x_center
+#     yy_prime = coor_prime[1] + y_center
+#     zz_prime = coor_prime[2] + z_center
+#
+#     # trim the values outside boundaries
+#     x_valid1 = xx_prime >= 0
+#     x_valid2 = xx_prime <= Nx - 1
+#     y_valid1 = yy_prime >= 0
+#     y_valid2 = yy_prime <= Ny - 1
+#     z_valid1 = zz_prime >= 0
+#     z_valid2 = zz_prime <= Nz - 1
+#
+#     nonzero_dens = data > 0
+#
+#     # get voxels with all valid dimensions
+#     valid_voxel = x_valid1 * x_valid2 * y_valid1 * y_valid2 * z_valid1 * z_valid2 * nonzero_dens
+#
+#     # get nonzero positions
+#     x_valid_idx, y_valid_idx, z_valid_idx = np.where(valid_voxel > 0)
+#
+#     # create new arrays to store the final result
+#     new_data_array = np.zeros_like(data)
+#     new_vec_array = np.zeros_like(vec)
+#     new_p1 = np.zeros_like(prob_c1)
+#     new_p2 = np.zeros_like(prob_c2)
+#     new_p3 = np.zeros_like(prob_c3)
+#     new_p4 = np.zeros_like(prob_c4)
+#
+#     # gather points to be interpolated
+#     interp_points = np.array(
+#         [
+#             xx_prime[x_valid_idx, y_valid_idx, z_valid_idx],
+#             yy_prime[x_valid_idx, y_valid_idx, z_valid_idx],
+#             zz_prime[x_valid_idx, y_valid_idx, z_valid_idx],
+#         ]
+#     ).T
+#
+#     if interp is not None:
+#         # interpolate
+#         data_w_coor = RegularGridInterpolator((x, y, z), data, method=interp)
+#         vec_w_coor = RegularGridInterpolator((x, y, z), vec, method=interp)
+#         p1_w_coor = RegularGridInterpolator((x, y, z), prob_c1, method=interp)
+#         p2_w_coor = RegularGridInterpolator((x, y, z), prob_c2, method=interp)
+#         p3_w_coor = RegularGridInterpolator((x, y, z), prob_c3, method=interp)
+#         p4_w_coor = RegularGridInterpolator((x, y, z), prob_c4, method=interp)
+#
+#         interp_result = data_w_coor(interp_points)
+#         vec_result = vec_w_coor(interp_points)
+#         p1_result = p1_w_coor(interp_points)
+#         p2_result = p2_w_coor(interp_points)
+#         p3_result = p3_w_coor(interp_points)
+#         p4_result = p4_w_coor(interp_points)
+#
+#     else:
+#         # use casting
+#         interp_result = data[interp_points[:, 0].astype(np.int32),
+#                              interp_points[:, 1].astype(np.int32),
+#                              interp_points[:, 2].astype(np.int32)]
+#         vec_result = vec[interp_points[:, 0].astype(np.int32),
+#                          interp_points[:, 1].astype(np.int32),
+#                          interp_points[:, 2].astype(np.int32)]
+#         p1_result = prob_c1[interp_points[:, 0].astype(np.int32),
+#                             interp_points[:, 1].astype(np.int32),
+#                             interp_points[:, 2].astype(np.int32)]
+#         p2_result = prob_c2[interp_points[:, 0].astype(np.int32),
+#                             interp_points[:, 1].astype(np.int32),
+#                             interp_points[:, 2].astype(np.int32)]
+#         p3_result = prob_c3[interp_points[:, 0].astype(np.int32),
+#                             interp_points[:, 1].astype(np.int32),
+#                             interp_points[:, 2].astype(np.int32)]
+#         p4_result = prob_c4[interp_points[:, 0].astype(np.int32),
+#                             interp_points[:, 1].astype(np.int32),
+#                             interp_points[:, 2].astype(np.int32)]
+#
+#     # save interpolated data
+#     new_data_array[x_valid_idx, y_valid_idx, z_valid_idx] = interp_result
+#     new_vec_array[x_valid_idx, y_valid_idx, z_valid_idx] = np.swapaxes(np.tensordot(mtx, np.swapaxes(vec_result, 0, 1),
+#                                                                                     axes=((0), (0))), 0, 1)
+#     new_p1[x_valid_idx, y_valid_idx, z_valid_idx] = p1_result
+#     new_p2[x_valid_idx, y_valid_idx, z_valid_idx] = p2_result
+#     new_p3[x_valid_idx, y_valid_idx, z_valid_idx] = p3_result
+#     new_p4[x_valid_idx, y_valid_idx, z_valid_idx] = p4_result
+#
+#     return new_vec_array, new_data_array, new_p1, new_p2, new_p3, new_p4
+def rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx):
+    dim = data.shape[0]
 
-    :param data: the density map
-    :param vec: the vector field
-    :param prob_c1, prob_c2, prob_c3, prob_c4: probability of 4 classes
-    :param mtx: the rotation matrix
-    :param interp: interpolation method, defaults to None (optional)
-    :return: The new_vec_array is the new vector array after rotation. The new_data_array is the new density array after
-    rotation. The new_p1, new_p2, new_p3, new_p4 are the new probability arrays after rotation.
-    """
+    new_pos = np.array(np.meshgrid(np.arange(dim), np.arange(dim), np.arange(dim), )).T.reshape(-1, 3)
 
-    Nx, Ny, Nz = data.shape
-    x = np.linspace(0, Nx - 1, Nx)
-    y = np.linspace(0, Ny - 1, Ny)
-    z = np.linspace(0, Nz - 1, Nz)
-    xx, yy, zz = np.meshgrid(x, y, z, indexing='ij')
+    cent = 0.5 * float(dim)
+    new_pos = new_pos - cent
 
-    x_center = x[0] + x[-1] / 2
-    y_center = y[0] + y[-1] / 2
-    z_center = z[0] + z[-1] / 2
+    old_pos = rot_pos_mtx(np.flip(mtx).T, new_pos) + cent
 
-    # center the coord
-    coor = np.array([xx - x_center, yy - y_center, zz - z_center])
-    # apply rotation
-    coor_prime = np.tensordot(mtx, coor, axes=((1), (0)))
+    combined_arr = np.hstack((old_pos, new_pos))
 
-    # uncenter the coord
-    xx_prime = coor_prime[0] + x_center
-    yy_prime = coor_prime[1] + y_center
-    zz_prime = coor_prime[2] + z_center
+    in_bound_mask = (
+            (old_pos[:, 0] >= 0)
+            & (old_pos[:, 1] >= 0)
+            & (old_pos[:, 2] >= 0)
+            & (old_pos[:, 0] < dim)
+            & (old_pos[:, 1] < dim)
+            & (old_pos[:, 2] < dim)
+    )
 
-    # trim the values outside boundaries
-    x_valid1 = xx_prime >= 0
-    x_valid2 = xx_prime <= Nx - 1
-    y_valid1 = yy_prime >= 0
-    y_valid2 = yy_prime <= Ny - 1
-    z_valid1 = zz_prime >= 0
-    z_valid2 = zz_prime <= Nz - 1
+    # get the mask of all the values inside boundary
+    new_pos = (new_pos[in_bound_mask] + cent).astype(np.int32)
 
-    nonzero_dens = data > 0
+    # get the old index array
+    old_pos = old_pos[in_bound_mask].astype(np.int32)
 
-    # get voxels with all valid dimensions
-    valid_voxel = x_valid1 * x_valid2 * y_valid1 * y_valid2 * z_valid1 * z_valid2 * nonzero_dens
+    old_x = old_pos[:, 0]
+    old_y = old_pos[:, 1]
+    old_z = old_pos[:, 2]
 
-    # get nonzero positions
-    x_valid_idx, y_valid_idx, z_valid_idx = np.where(valid_voxel > 0)
+    new_vec = np.tensordot(np.flip(mtx), vec[old_x, old_y, old_z], axes=((0), (1)))
 
-    # create new arrays to store the final result
-    new_data_array = np.zeros_like(data)
+    new_x = new_pos[:, 0]
+    new_y = new_pos[:, 1]
+    new_z = new_pos[:, 2]
+
+    # create new array for density, vector and probability
     new_vec_array = np.zeros_like(vec)
+    new_data_array = np.zeros_like(data)
     new_p1 = np.zeros_like(prob_c1)
     new_p2 = np.zeros_like(prob_c2)
     new_p3 = np.zeros_like(prob_c3)
     new_p4 = np.zeros_like(prob_c4)
 
-    # gather points to be interpolated
-    interp_points = np.array(
-        [
-            xx_prime[x_valid_idx, y_valid_idx, z_valid_idx],
-            yy_prime[x_valid_idx, y_valid_idx, z_valid_idx],
-            zz_prime[x_valid_idx, y_valid_idx, z_valid_idx],
-        ]
-    ).T
-
-    if interp is not None:
-        # interpolate
-        data_w_coor = RegularGridInterpolator((x, y, z), data, method=interp)
-        vec_w_coor = RegularGridInterpolator((x, y, z), vec, method=interp)
-        p1_w_coor = RegularGridInterpolator((x, y, z), prob_c1, method=interp)
-        p2_w_coor = RegularGridInterpolator((x, y, z), prob_c2, method=interp)
-        p3_w_coor = RegularGridInterpolator((x, y, z), prob_c3, method=interp)
-        p4_w_coor = RegularGridInterpolator((x, y, z), prob_c4, method=interp)
-
-        interp_result = data_w_coor(interp_points)
-        vec_result = vec_w_coor(interp_points)
-        p1_result = p1_w_coor(interp_points)
-        p2_result = p2_w_coor(interp_points)
-        p3_result = p3_w_coor(interp_points)
-        p4_result = p4_w_coor(interp_points)
-
-    else:
-        # use casting
-        interp_result = data[interp_points[:, 0].astype(np.int32),
-                             interp_points[:, 1].astype(np.int32),
-                             interp_points[:, 2].astype(np.int32)]
-        vec_result = vec[interp_points[:, 0].astype(np.int32),
-                         interp_points[:, 1].astype(np.int32),
-                         interp_points[:, 2].astype(np.int32)]
-        p1_result = prob_c1[interp_points[:, 0].astype(np.int32),
-                            interp_points[:, 1].astype(np.int32),
-                            interp_points[:, 2].astype(np.int32)]
-        p2_result = prob_c2[interp_points[:, 0].astype(np.int32),
-                            interp_points[:, 1].astype(np.int32),
-                            interp_points[:, 2].astype(np.int32)]
-        p3_result = prob_c3[interp_points[:, 0].astype(np.int32),
-                            interp_points[:, 1].astype(np.int32),
-                            interp_points[:, 2].astype(np.int32)]
-        p4_result = prob_c4[interp_points[:, 0].astype(np.int32),
-                            interp_points[:, 1].astype(np.int32),
-                            interp_points[:, 2].astype(np.int32)]
-
-    # save interpolated data
-    new_data_array[x_valid_idx, y_valid_idx, z_valid_idx] = interp_result
-    new_vec_array[x_valid_idx, y_valid_idx, z_valid_idx] = np.swapaxes(np.tensordot(mtx, np.swapaxes(vec_result, 0, 1),
-                                                                                    axes=((0), (0))), 0, 1)
-    new_p1[x_valid_idx, y_valid_idx, z_valid_idx] = p1_result
-    new_p2[x_valid_idx, y_valid_idx, z_valid_idx] = p2_result
-    new_p3[x_valid_idx, y_valid_idx, z_valid_idx] = p3_result
-    new_p4[x_valid_idx, y_valid_idx, z_valid_idx] = p4_result
+    # fill in the values to new vec and dens array
+    new_vec_array[new_x, new_y, new_z] = new_vec.T
+    new_data_array[new_x, new_y, new_z] = data[old_x, old_y, old_z]
+    new_p1[new_x, new_y, new_z] = prob_c1[old_x, old_y, old_z]
+    new_p2[new_x, new_y, new_z] = prob_c2[old_x, old_y, old_z]
+    new_p3[new_x, new_y, new_z] = prob_c3[old_x, old_y, old_z]
+    new_p4[new_x, new_y, new_z] = prob_c4[old_x, old_y, old_z]
 
     return new_vec_array, new_data_array, new_p1, new_p2, new_p3, new_p4
 
-    # dim = data.shape[0]
-    #
-    # new_pos = np.array(np.meshgrid(np.arange(dim), np.arange(dim), np.arange(dim), )).T.reshape(-1, 3)
-    #
-    # cent = 0.5 * float(dim)
-    # new_pos = new_pos - cent
-    #
-    # old_pos = rot_pos_mtx(np.flip(mtx).T, new_pos) + cent
-    #
-    # combined_arr = np.hstack((old_pos, new_pos))
-    #
-    # in_bound_mask = (
-    #         (old_pos[:, 0] >= 0)
-    #         & (old_pos[:, 1] >= 0)
-    #         & (old_pos[:, 2] >= 0)
-    #         & (old_pos[:, 0] < dim)
-    #         & (old_pos[:, 1] < dim)
-    #         & (old_pos[:, 2] < dim)
-    # )
-    #
-    # # get the mask of all the values inside boundary
-    # new_pos = (new_pos[in_bound_mask] + cent).astype(np.int32)
-    #
-    # # get the old index array
-    # old_pos = old_pos[in_bound_mask].astype(np.int32)
-    #
-    # old_x = old_pos[:, 0]
-    # old_y = old_pos[:, 1]
-    # old_z = old_pos[:, 2]
-    #
-    # new_vec = np.tensordot(np.flip(mtx), vec[old_x, old_y, old_z], axes=((0), (1)))
-    #
-    # new_x = new_pos[:, 0]
-    # new_y = new_pos[:, 1]
-    # new_z = new_pos[:, 2]
-    #
-    # # create new array for density, vector and probability
-    # new_vec_array = np.zeros_like(vec)
-    # new_data_array = np.zeros_like(data)
-    # new_p1 = np.zeros_like(prob_c1)
-    # new_p2 = np.zeros_like(prob_c2)
-    # new_p3 = np.zeros_like(prob_c3)
-    # new_p4 = np.zeros_like(prob_c4)
-    #
-    # # fill in the values to new vec and dens array
-    # new_vec_array[new_x, new_y, new_z] = new_vec.T
-    # new_data_array[new_x, new_y, new_z] = data[old_x, old_y, old_z]
-    # new_p1[new_x, new_y, new_z] = prob_c1[old_x, old_y, old_z]
-    # new_p2[new_x, new_y, new_z] = prob_c2[old_x, old_y, old_z]
-    # new_p3[new_x, new_y, new_z] = prob_c3[old_x, old_y, old_z]
-    # new_p4[new_x, new_y, new_z] = prob_c4[old_x, old_y, old_z]
-    #
-    # return new_vec_array, new_data_array, new_p1, new_p2, new_p3, new_p4
+    combined_arr = combined_arr[in_bound_mask]
 
-    # combined_arr = combined_arr[in_bound_mask]
-    #
-    # combined_arr = combined_arr.astype(np.int32)
-    #
-    # index_arr = combined_arr[:, 0:3]
-    #
-    # dens_mask = data[index_arr[:, 0], index_arr[:, 1], index_arr[:, 2]] != 0.0
-    # dens_mask_p1 = prob_c1[index_arr[:, 0], index_arr[:, 1], index_arr[:, 2]] != 0.0
-    # dens_mask_p2 = prob_c2[index_arr[:, 0], index_arr[:, 1], index_arr[:, 2]] != 0.0
-    # dens_mask_p3 = prob_c3[index_arr[:, 0], index_arr[:, 1], index_arr[:, 2]] != 0.0
-    # dens_mask_p4 = prob_c4[index_arr[:, 0], index_arr[:, 1], index_arr[:, 2]] != 0.0
-    #
-    # non_zero_rot_list = combined_arr[dens_mask]
-    # non_zero_rot_list_p1 = combined_arr[dens_mask_p1]
-    # non_zero_rot_list_p2 = combined_arr[dens_mask_p2]
-    # non_zero_rot_list_p3 = combined_arr[dens_mask_p3]
-    # non_zero_rot_list_p4 = combined_arr[dens_mask_p4]
-    #
-    # non_zero_vec = vec[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
-    #
-    # non_zero_dens = data[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
-    #
-    # non_zero_dens_p1 = prob_c1[
-    #     non_zero_rot_list_p1[:, 0], non_zero_rot_list_p1[:, 1], non_zero_rot_list_p1[:, 2]]
-    #
-    # non_zero_dens_p2 = prob_c2[
-    #     non_zero_rot_list_p2[:, 0], non_zero_rot_list_p2[:, 1], non_zero_rot_list_p2[:, 2]]
-    #
-    # non_zero_dens_p3 = prob_c3[
-    #     non_zero_rot_list_p3[:, 0], non_zero_rot_list_p3[:, 1], non_zero_rot_list_p3[:, 2]]
-    #
-    # non_zero_dens_p4 = prob_c4[
-    #     non_zero_rot_list_p4[:, 0], non_zero_rot_list_p4[:, 1], non_zero_rot_list_p4[:, 2]]
-    #
-    # new_vec = rot_pos_mtx(np.flip(mtx), non_zero_vec)
-    #
-    # new_vec_array = np.zeros_like(vec)
-    # new_data_array = np.zeros_like(data)
-    # new_data_array_p1 = np.zeros_like(prob_c1)
-    # new_data_array_p2 = np.zeros_like(prob_c2)
-    # new_data_array_p3 = np.zeros_like(prob_c3)
-    # new_data_array_p4 = np.zeros_like(prob_c4)
-    #
-    # for vec, ind, dens in zip(new_vec, (non_zero_rot_list[:, 3:6] + cent).astype(int), non_zero_dens):
-    #     new_vec_array[ind[0]][ind[1]][ind[2]][0] = vec[0]
-    #     new_vec_array[ind[0]][ind[1]][ind[2]][1] = vec[1]
-    #     new_vec_array[ind[0]][ind[1]][ind[2]][2] = vec[2]
-    #     new_data_array[ind[0]][ind[1]][ind[2]] = dens
-    #
-    # for ind, dens in zip((non_zero_rot_list_p1[:, 3:6] + cent).astype(int), non_zero_dens_p1):
-    #     new_data_array_p1[ind[0]][ind[1]][ind[2]] = dens
-    #
-    # for ind, dens in zip((non_zero_rot_list_p2[:, 3:6] + cent).astype(int), non_zero_dens_p2):
-    #     new_data_array_p2[ind[0]][ind[1]][ind[2]] = dens
-    #
-    # for ind, dens in zip((non_zero_rot_list_p3[:, 3:6] + cent).astype(int), non_zero_dens_p3):
-    #     new_data_array_p3[ind[0]][ind[1]][ind[2]] = dens
-    #
-    # for ind, dens in zip((non_zero_rot_list_p4[:, 3:6] + cent).astype(int), non_zero_dens_p4):
-    #     new_data_array_p4[ind[0]][ind[1]][ind[2]] = dens
+    combined_arr = combined_arr.astype(np.int32)
 
-    # return new_vec_array, new_data_array, new_data_array_p1, new_data_array_p2, new_data_array_p3, new_data_array_p4
+    index_arr = combined_arr[:, 0:3]
+
+    dens_mask = data[index_arr[:, 0], index_arr[:, 1], index_arr[:, 2]] != 0.0
+    dens_mask_p1 = prob_c1[index_arr[:, 0], index_arr[:, 1], index_arr[:, 2]] != 0.0
+    dens_mask_p2 = prob_c2[index_arr[:, 0], index_arr[:, 1], index_arr[:, 2]] != 0.0
+    dens_mask_p3 = prob_c3[index_arr[:, 0], index_arr[:, 1], index_arr[:, 2]] != 0.0
+    dens_mask_p4 = prob_c4[index_arr[:, 0], index_arr[:, 1], index_arr[:, 2]] != 0.0
+
+    non_zero_rot_list = combined_arr[dens_mask]
+    non_zero_rot_list_p1 = combined_arr[dens_mask_p1]
+    non_zero_rot_list_p2 = combined_arr[dens_mask_p2]
+    non_zero_rot_list_p3 = combined_arr[dens_mask_p3]
+    non_zero_rot_list_p4 = combined_arr[dens_mask_p4]
+
+    non_zero_vec = vec[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
+
+    non_zero_dens = data[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
+
+    non_zero_dens_p1 = prob_c1[
+        non_zero_rot_list_p1[:, 0], non_zero_rot_list_p1[:, 1], non_zero_rot_list_p1[:, 2]]
+
+    non_zero_dens_p2 = prob_c2[
+        non_zero_rot_list_p2[:, 0], non_zero_rot_list_p2[:, 1], non_zero_rot_list_p2[:, 2]]
+
+    non_zero_dens_p3 = prob_c3[
+        non_zero_rot_list_p3[:, 0], non_zero_rot_list_p3[:, 1], non_zero_rot_list_p3[:, 2]]
+
+    non_zero_dens_p4 = prob_c4[
+        non_zero_rot_list_p4[:, 0], non_zero_rot_list_p4[:, 1], non_zero_rot_list_p4[:, 2]]
+
+    new_vec = rot_pos_mtx(np.flip(mtx), non_zero_vec)
+
+    new_vec_array = np.zeros_like(vec)
+    new_data_array = np.zeros_like(data)
+    new_data_array_p1 = np.zeros_like(prob_c1)
+    new_data_array_p2 = np.zeros_like(prob_c2)
+    new_data_array_p3 = np.zeros_like(prob_c3)
+    new_data_array_p4 = np.zeros_like(prob_c4)
+
+    for vec, ind, dens in zip(new_vec, (non_zero_rot_list[:, 3:6] + cent).astype(int), non_zero_dens):
+        new_vec_array[ind[0]][ind[1]][ind[2]][0] = vec[0]
+        new_vec_array[ind[0]][ind[1]][ind[2]][1] = vec[1]
+        new_vec_array[ind[0]][ind[1]][ind[2]][2] = vec[2]
+        new_data_array[ind[0]][ind[1]][ind[2]] = dens
+
+    for ind, dens in zip((non_zero_rot_list_p1[:, 3:6] + cent).astype(int), non_zero_dens_p1):
+        new_data_array_p1[ind[0]][ind[1]][ind[2]] = dens
+
+    for ind, dens in zip((non_zero_rot_list_p2[:, 3:6] + cent).astype(int), non_zero_dens_p2):
+        new_data_array_p2[ind[0]][ind[1]][ind[2]] = dens
+
+    for ind, dens in zip((non_zero_rot_list_p3[:, 3:6] + cent).astype(int), non_zero_dens_p3):
+        new_data_array_p3[ind[0]][ind[1]][ind[2]] = dens
+
+    for ind, dens in zip((non_zero_rot_list_p4[:, 3:6] + cent).astype(int), non_zero_dens_p4):
+        new_data_array_p4[ind[0]][ind[1]][ind[2]] = dens
+
+    return new_vec_array, new_data_array, new_data_array_p1, new_data_array_p2, new_data_array_p3, new_data_array_p4
 
 
 def get_score(
@@ -950,20 +1067,21 @@ def calc_angle_comb(ang_interval):
         i += ang_interval
 
     i = 0
-    while i < 180:
+    while i <= 180:
         z_angle.append(i)
         i += ang_interval
 
     angle_comb = np.array(np.meshgrid(x_angle, y_angle, z_angle)).T.reshape(-1, 3)
-    seen = set()
-    uniq = []
-    for ang in angle_comb:
-        quat = tuple(np.round(R.from_euler('ZYX', ang, degrees=True).as_quat(), 4))
-        if quat not in seen:
-            uniq.append(ang)
-            seen.add(quat)
-
-    return uniq
+    return angle_comb
+    # seen = set()
+    # uniq = []
+    # for ang in angle_comb:
+    #     quat = tuple(np.round(R.from_euler('ZYX', ang, degrees=True).as_quat(), 4))
+    #     if quat not in seen:
+    #         uniq.append(ang)
+    #         seen.add(quat)
+    #
+    # return uniq
 
 
 def convert_trans(cen1, cen2, r, trans, xwidth2, dim):
