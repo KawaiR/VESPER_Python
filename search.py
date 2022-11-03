@@ -844,7 +844,7 @@ def rot_and_search_fft_prob(data, vec,
         prob_trans (list): Best translation in [x,y,z] with prob_score
     """
 
-    rot_mtx = R.from_euler("ZYX", angle, degrees=True).as_matrix()
+    rot_mtx = R.from_euler("xyz", angle, degrees=True).as_matrix()
 
     # Rotate the query map and vector representation
     r_vec, r_data, rp1, rp2, rp3, rp4 = \
