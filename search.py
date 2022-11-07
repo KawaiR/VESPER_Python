@@ -6,6 +6,7 @@ from pathlib import Path
 
 import mrcfile
 import pyfftw
+from scipy.spatial.transform import Rotation as R
 from tqdm import tqdm
 
 from utils import *
@@ -901,7 +902,7 @@ def find_best_trans_mixed(vec_fft_results, prob_fft_results, alpha, vstd, vave, 
     :return: The best score and the translation that produced it.
     """
     sum_arr_v = sum(vec_fft_results)
-    #sum_arr_p = sum(prob_fft_results)
+    # sum_arr_p = sum(prob_fft_results)
     sum_arr_p = sum((prob_fft_results[0], prob_fft_results[1], prob_fft_results[2]))
 
     # z-score normalization

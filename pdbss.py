@@ -1,6 +1,9 @@
+import argparse
 import os
-from tqdm import tqdm
 import pathlib
+
+import mrcfile
+import numpy as np
 import pandas as pd
 
 
@@ -9,14 +12,23 @@ def contains_number(s):
 
 
 def assign_ss(pdb_path, output_dir):
-    for pdb_file in tqdm(pathlib.Path(pdb_path).iterdir(), total=len(list(pathlib.Path(pdb_path).iterdir()))):
-        os.system(
-            "stride \"" + pdb_path + pdb_file.stem + ".pdb\" > " + "\"" + output_dir + pdb_file.stem + ".ss" + "\"")
+    print("Assigning secondary structure using Stride...")
+
+    os.makedirs(output_dir, exist_ok=True)
+
+    pdb_path = os.path.abspath(pdb_path)
+    filename = pathlib.Path(pdb_path).stem
+    os.system("stride \"" + pdb_path + "\" > " + "\"" + output_dir + filename + ".ss" + "\"")
+
+    print("SS assignment file save to: " + output_dir + filename + ".ss")
+
+    return output_dir + filename + ".ss"
 
 
-def split_pdb_by_ss(pdb_path, ss_path):
+def split_pdb_by_ss(pdb_path, ss_path, output_dir):
+    print("Splitting PDB file by secondary structure...")
 
-    output_dir = "./pdb_ss_split/"
+    os.makedirs(output_dir, exist_ok=True)
 
     file_ss = open(ss_path, mode="r")
     file_pdb = open(pdb_path, mode="r")
@@ -60,6 +72,8 @@ def split_pdb_by_ss(pdb_path, ss_path):
     b_strs = df[df["res_num"].isin(ss_lines_pred_b)]
     c_strs = df[df["res_num"].isin(ss_lines_pred_c)]
 
+    pdb_path = pathlib.Path(pdb_path)
+
     with open(output_dir + pdb_path.stem + "_ssA.pdb", 'w') as fp:
         for item in a_strs['str'].to_list():
             fp.write("%s" % item)
@@ -72,18 +86,108 @@ def split_pdb_by_ss(pdb_path, ss_path):
         for item in c_strs['str'].to_list():
             fp.write("%s" % item)
 
+    print("PDB files saved to: " + output_dir)
 
-def chimera_gen_mrc(map_path, mrc_path, output_map, sample_res):
+
+def chimera_gen_mrc(pdb_path, mrc_path, output_path, sample_res):
+    print("Using Chimera to generate MRC file...")
+
     sample_res = str(sample_res)
-    map_path = os.path.abspath(map_path)
+    pdb_path = os.path.abspath(pdb_path)
     mrc_path = os.path.abspath(mrc_path)
-    output_map = os.path.abspath(output_map)
+    output_path = os.path.abspath(output_path)
+
     with open("./cmd_file.py", "w") as cmd_file:
         cmd_file.write('from chimera import runCommand as rc\n\n')
-        cmd_file.write('rc("open ' + map_path + '")\n')
+        cmd_file.write('rc("open ' + pdb_path + '")\n')
         cmd_file.write('rc("open ' + mrc_path + '")\n')
         cmd_file.write('rc("molmap #0 ' + sample_res + ' gridSpacing 1 onGrid #1' + '")\n')
-        cmd_file.write('rc("vol #2 save ' + output_map + '")\n')
+        cmd_file.write('rc("vol #2 save ' + output_path + '")\n')
 
     run_command = 'chimera --silent --nogui ' + "./cmd_file.py 2> /dev/null"
     os.system(run_command)
+
+    print("MRC file saved to: " + output_path)
+
+
+def gen_npy(pdb_path, target_mrc, sample_res, save_npy=False):
+    print("Combining MRC files into a Numpy array...")
+
+    os.system("rm -r ./tmp_data")
+
+    os.makedirs("./tmp_data/ss/", exist_ok=True)
+    os.makedirs("./tmp_data/pdb/", exist_ok=True)
+    os.makedirs("./tmp_data/simu_mrc/", exist_ok=True)
+    os.makedirs("./tmp_data/npy/", exist_ok=True)
+
+    out_ss = assign_ss(pdb_path, "./tmp_data/ss/")
+    split_pdb_by_ss(pdb_path, out_ss, "./tmp_data/pdb/")
+
+    for file in os.listdir("./tmp_data/pdb/"):
+        if file.endswith("ssA.pdb"):
+            chimera_gen_mrc("./tmp_data/pdb/" + file, target_mrc, "./tmp_data/simu_mrc/" + file + ".mrc", sample_res)
+        elif file.endswith("ssB.pdb"):
+            chimera_gen_mrc("./tmp_data/pdb/" + file, target_mrc, "./tmp_data/simu_mrc/" + file + ".mrc", sample_res)
+        elif file.endswith("ssC.pdb"):
+            chimera_gen_mrc("./tmp_data/pdb/" + file, target_mrc, "./tmp_data/simu_mrc/" + file + ".mrc", sample_res)
+
+    with mrcfile.open(target_mrc) as mrc:
+        dims = mrc.data.shape
+
+        npy_list = []
+        for file in os.listdir("./tmp_data/simu_mrc/"):
+            if file.endswith("ssC.pdb.mrc"):
+                if os.stat("./tmp_data/simu_mrc/" + file).st_size == 0:
+                    npy_list.append(np.zeros((dims[0], dims[1], dims[2])))
+                else:
+                    npy_list.append(mrcfile.open("./tmp_data/simu_mrc/" + file).data)
+            elif file.endswith("ssB.pdb.mrc"):
+                if os.stat("./tmp_data/simu_mrc/" + file).st_size == 0:
+                    npy_list.append(np.zeros((dims[0], dims[1], dims[2])))
+                else:
+                    npy_list.append(mrcfile.open("./tmp_data/simu_mrc/" + file).data)
+            elif file.endswith("ssA.pdb.mrc"):
+                if os.stat("./tmp_data/simu_mrc/" + file).st_size == 0:
+                    npy_list.append(np.zeros((dims[0], dims[1], dims[2])))
+                else:
+                    npy_list.append(mrcfile.open("./tmp_data/simu_mrc/" + file).data)
+
+
+    npy_list.append(np.zeros((dims[0], dims[1], dims[2])))  # add a zero map for DNA/RNA prediction
+
+    arr = np.array(npy_list)
+    arr = np.transpose(arr, (1, 2, 3, 0))
+
+    print("Numpy array generated.")
+
+    if save_npy:
+        np.save("./tmp_data/npy/simu_mrc.npy", arr)
+        print("Numpy array saved to: " + "./tmp_data/npy/simu_mrc.npy")
+
+    return arr
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+
+    parser.add_argument("--pdb", type=str, help="Path to the input pdb file")
+    parser.add_argument("--mrc", type=str, help="Path to the target mrc file")
+    parser.add_argument("--res", type=float, help="Sampling resolution")
+
+    # optional output path
+    parser.add_argument("--save", type=bool, default=False, help="Choose to save the npy file", required=False)
+
+    args = parser.parse_args()
+
+    npy = gen_npy(args.pdb, args.mrc, args.res, args.save)
+
+    print(npy.shape)
+    # print stats
+    print("Number in SS class Coil: ", np.count_nonzero(npy[..., 0]))
+    print("Number in SS class Beta: ", np.count_nonzero(npy[..., 1]))
+    print("Number in SS class Alpha: ", np.count_nonzero(npy[..., 2]))
+
+    # print min, max, mean, std
+    print("Coil: ", np.min(npy[..., 0]), np.max(npy[..., 0]), np.mean(npy[..., 0]), np.std(npy[..., 0]))
+    print("Beta: ", np.min(npy[..., 1]), np.max(npy[..., 1]), np.mean(npy[..., 1]), np.std(npy[..., 1]))
+    print("Alpha: ", np.min(npy[..., 2]), np.max(npy[..., 2]), np.mean(npy[..., 2]), np.std(npy[..., 2]))

@@ -2,9 +2,7 @@ import copy
 
 import numba
 import numpy as np
-import pyfftw
 from scipy.interpolate import RegularGridInterpolator
-from scipy.spatial.transform import Rotation as R
 
 interp = None
 
@@ -33,9 +31,12 @@ def mrc_set_vox_size(mrc, thr=0.00, voxel_size=7.0):
 
     # calculate maximum distance for non-zero entries
     non_zero_index_list = np.array(np.nonzero(mrc.data)).T
-    cent_arr = np.array(mrc.cent)
-    d2_list = np.linalg.norm(non_zero_index_list - cent_arr, axis=1)
-    dmax = np.max(d2_list)
+    if len(non_zero_index_list) == 0:
+        dmax = 0
+    else:
+        cent_arr = np.array(mrc.cent)
+        d2_list = np.linalg.norm(non_zero_index_list - cent_arr, axis=1)
+        dmax = np.max(d2_list)
 
     print()
     print("#dmax=" + str(dmax / mrc.xwidth))
