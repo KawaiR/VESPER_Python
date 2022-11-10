@@ -106,6 +106,8 @@ def chimera_gen_mrc(pdb_path, mrc_path, output_path, sample_res):
 
     run_command = 'chimera --silent --nogui ' + "./cmd_file.py 2> /dev/null"
     os.system(run_command)
+    # remove the cmd_file.py
+    os.remove("./cmd_file.py")
 
     print("MRC file saved to: " + output_path)
 
@@ -118,7 +120,6 @@ def gen_npy(pdb_path, target_mrc, sample_res, save_npy=False):
     os.makedirs("./tmp_data/ss/", exist_ok=True)
     os.makedirs("./tmp_data/pdb/", exist_ok=True)
     os.makedirs("./tmp_data/simu_mrc/", exist_ok=True)
-    os.makedirs("./tmp_data/npy/", exist_ok=True)
 
     out_ss = assign_ss(pdb_path, "./tmp_data/ss/")
     split_pdb_by_ss(pdb_path, out_ss, "./tmp_data/pdb/")
@@ -134,35 +135,28 @@ def gen_npy(pdb_path, target_mrc, sample_res, save_npy=False):
     with mrcfile.open(target_mrc) as mrc:
         dims = mrc.data.shape
 
-        npy_list = []
+        arr = np.zeros((4, dims[0], dims[1], dims[2]))
+
         for file in os.listdir("./tmp_data/simu_mrc/"):
             if file.endswith("ssC.pdb.mrc"):
-                if os.stat("./tmp_data/simu_mrc/" + file).st_size == 0:
-                    npy_list.append(np.zeros((dims[0], dims[1], dims[2])))
-                else:
-                    npy_list.append(mrcfile.open("./tmp_data/simu_mrc/" + file).data)
+                arr[0] = mrcfile.open("./tmp_data/simu_mrc/" + file).data.copy()
             elif file.endswith("ssB.pdb.mrc"):
-                if os.stat("./tmp_data/simu_mrc/" + file).st_size == 0:
-                    npy_list.append(np.zeros((dims[0], dims[1], dims[2])))
-                else:
-                    npy_list.append(mrcfile.open("./tmp_data/simu_mrc/" + file).data)
+                arr[1] = mrcfile.open("./tmp_data/simu_mrc/" + file).data.copy()
             elif file.endswith("ssA.pdb.mrc"):
-                if os.stat("./tmp_data/simu_mrc/" + file).st_size == 0:
-                    npy_list.append(np.zeros((dims[0], dims[1], dims[2])))
-                else:
-                    npy_list.append(mrcfile.open("./tmp_data/simu_mrc/" + file).data)
+                arr[2] = mrcfile.open("./tmp_data/simu_mrc/" + file).data.copy()
 
-
-    npy_list.append(np.zeros((dims[0], dims[1], dims[2])))  # add a zero map for DNA/RNA prediction
-
-    arr = np.array(npy_list)
     arr = np.transpose(arr, (1, 2, 3, 0))
 
     print("Numpy array generated.")
 
+    # get stem of pdb file
+    pdb_path = pathlib.Path(pdb_path)
+    pdb_stem = pdb_path.stem
+
     if save_npy:
-        np.save("./tmp_data/npy/simu_mrc.npy", arr)
-        print("Numpy array saved to: " + "./tmp_data/npy/simu_mrc.npy")
+        os.makedirs("./ss_npy/", exist_ok=True)
+        np.save("./ss_npy/" + pdb_stem + "_prob.npy", arr)
+        print("Numpy array saved to: " + "./tmp_data/npy/" + pdb_stem + "_prob.npy")
 
     return arr
 

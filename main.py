@@ -112,6 +112,8 @@ if __name__ == "__main__":
     prob.add_argument('-pstd', type=float, help='Pre-computed standard deviation for probability map')
     prob.add_argument('-o', type=str, default=None, help='Output folder name')
     prob.add_argument('-I', type=str, default=None, help='Interpolation mode def=None')
+    prob.add_argument('-B', type=float, default=8.0, help='Bandwidth of the Gaussian filter for probability values def=8.0')
+    prob.add_argument('-R', type=float, default=0.0, help='Threshold for probability values def=0.0')
 
     args = parser.parse_args()
 
@@ -143,8 +145,16 @@ if __name__ == "__main__":
         modeVal = args.M
         evalMode = args.E
 
-        print(objA, objB, threshold1, threshold2, bandwidth, voxel_spacing, angle_spacing, topN, showPDB, modeVal,
-              evalMode)
+        print("#Summary of the input parameters")
+        print("Target MAP: ", objA)
+        print("Search MAP: ", objB)
+        print("Threshold of Target MAP: ", threshold1)
+        print("Threshold of Search MAP: ", threshold2)
+        print("Bandwidth of the Gaussian filter: ", bandwidth)
+        print("Sampling voxel spacing: ", voxel_spacing)
+        print("Sampling angle spacing: ", angle_spacing)
+        print("Refine Top ", topN, " models")
+        print("Show topN models in PDB format: ", showPDB)
 
         # construct mrc objects
         mrc1 = MrcObj(objA)
@@ -259,8 +269,19 @@ if __name__ == "__main__":
 
         num_processors = args.P
 
-        print(objA, objB, probA, probB, threshold1, threshold2, bandwidth, voxel_spacing, angle_spacing, topN, showPDB,
-              modeVal, evalMode, alpha, vave, vstd, pave, pstd)
+        print("#Summary of the input parameters")
+        print("Target MAP: ", objA)
+        print("Search MAP: ", objB)
+        print("Threshold of Target MAP: ", threshold1)
+        print("Threshold of Search MAP: ", threshold2)
+        print("Bandwidth of the Gaussian filter: ", bandwidth)
+        print("Sampling voxel spacing: ", voxel_spacing)
+        print("Sampling angle spacing: ", angle_spacing)
+        print("Refine Top ", topN, " models")
+        print("Show topN models in PDB format: ", showPDB)
+        print("Alpha: ", alpha)
+        print("Bandwidth of the Gaussian filter for probability values: ", args.B)
+        print("Threshold for probability values: ", args.R)
 
         if alpha == 0.0:
             alpha_is_zero(objA, objB,
@@ -310,28 +331,17 @@ if __name__ == "__main__":
 
             print("\n###Generating Params for Resampling Probability Map 1###")
 
-            mrc1_p1, mrc_N1_p1 = mrc_set_vox_size(mrc1_p1, thr=0.0, voxel_size=voxel_spacing)
-            mrc1_p2, mrc_N1_p2 = mrc_set_vox_size(mrc1_p2, thr=0.0, voxel_size=voxel_spacing)
-            mrc1_p3, mrc_N1_p3 = mrc_set_vox_size(mrc1_p3, thr=0.0, voxel_size=voxel_spacing)
-            mrc1_p4, mrc_N1_p4 = mrc_set_vox_size(mrc1_p4, thr=0.0, voxel_size=voxel_spacing)
+            mrc1_p1, mrc_N1_p1 = mrc_set_vox_size(mrc1_p1, thr=args.R, voxel_size=voxel_spacing)
+            mrc1_p2, mrc_N1_p2 = mrc_set_vox_size(mrc1_p2, thr=args.R, voxel_size=voxel_spacing)
+            mrc1_p3, mrc_N1_p3 = mrc_set_vox_size(mrc1_p3, thr=args.R, voxel_size=voxel_spacing)
+            mrc1_p4, mrc_N1_p4 = mrc_set_vox_size(mrc1_p4, thr=args.R, voxel_size=voxel_spacing)
 
             print("\n###Generating Params for Resampling Probability Map 2###")
 
-            mrc2_p1, mrc_N2_p1 = mrc_set_vox_size(mrc2_p1, thr=0.0, voxel_size=voxel_spacing)
-            mrc2_p2, mrc_N2_p2 = mrc_set_vox_size(mrc2_p2, thr=0.0, voxel_size=voxel_spacing)
-            mrc2_p3, mrc_N2_p3 = mrc_set_vox_size(mrc2_p3, thr=0.0, voxel_size=voxel_spacing)
-            mrc2_p4, mrc_N2_p4 = mrc_set_vox_size(mrc2_p4, thr=0.0, voxel_size=voxel_spacing)
-
-            # threshold the probability maps
-            # mrc_N1_p1.data[mrc_N1_p1.data < 0.9] = 0.0
-            # mrc_N1_p2.data[mrc_N1_p2.data < 0.9] = 0.0
-            # mrc_N1_p3.data[mrc_N1_p3.data < 0.9] = 0.0
-            # mrc_N1_p4.data[mrc_N1_p4.data < 0.9] = 0.0
-            #
-            # mrc_N2_p1.data[mrc_N2_p1.data < 0.9] = 0.0
-            # mrc_N2_p2.data[mrc_N2_p2.data < 0.9] = 0.0
-            # mrc_N2_p3.data[mrc_N2_p3.data < 0.9] = 0.0
-            # mrc_N2_p4.data[mrc_N2_p4.data < 0.9] = 0.0
+            mrc2_p1, mrc_N2_p1 = mrc_set_vox_size(mrc2_p1, thr=args.R, voxel_size=voxel_spacing)
+            mrc2_p2, mrc_N2_p2 = mrc_set_vox_size(mrc2_p2, thr=args.R, voxel_size=voxel_spacing)
+            mrc2_p3, mrc_N2_p3 = mrc_set_vox_size(mrc2_p3, thr=args.R, voxel_size=voxel_spacing)
+            mrc2_p4, mrc_N2_p4 = mrc_set_vox_size(mrc2_p4, thr=args.R, voxel_size=voxel_spacing)
 
             mrc_list = [mrc_N1, mrc_N2, mrc_N1_p1, mrc_N1_p2, mrc_N1_p3, mrc_N1_p4, mrc_N2_p1, mrc_N2_p2, mrc_N2_p3,
                         mrc_N2_p4]
@@ -362,17 +372,19 @@ if __name__ == "__main__":
             # mrc_N2_p4 = fastVEC(mrc2_p4, mrc_N2_p4, dreso=bandwidth)
 
             print("\n###Processing MAP1 Resampling###")
-            mrc_N1 = fastVEC(mrc1, mrc_N1, dreso=bandwidth, density_map=mrc1.data)
-            mrc_N1_p1 = fastVEC(mrc1_p1, mrc_N1_p1, dreso=bandwidth, density_map=mrc1.data)
-            mrc_N1_p2 = fastVEC(mrc1_p2, mrc_N1_p2, dreso=bandwidth, density_map=mrc1.data)
-            mrc_N1_p3 = fastVEC(mrc1_p3, mrc_N1_p3, dreso=bandwidth, density_map=mrc1.data)
-            mrc_N1_p4 = fastVEC(mrc1_p4, mrc_N1_p4, dreso=bandwidth, density_map=mrc1.data)
+
+            mrc_N1 = fastVEC(mrc1, mrc_N1, dreso=bandwidth)
+            mrc_N1_p1 = fastVEC(mrc1_p1, mrc_N1_p1, dreso=args.B, density_map=mrc1.data)
+            mrc_N1_p2 = fastVEC(mrc1_p2, mrc_N1_p2, dreso=args.B, density_map=mrc1.data)
+            mrc_N1_p3 = fastVEC(mrc1_p3, mrc_N1_p3, dreso=args.B, density_map=mrc1.data)
+            mrc_N1_p4 = fastVEC(mrc1_p4, mrc_N1_p4, dreso=args.B, density_map=mrc1.data)
+
             print("\n###Processing MAP2 Resampling###")
-            mrc_N2 = fastVEC(mrc2, mrc_N2, dreso=bandwidth, density_map=mrc2.data)
-            mrc_N2_p1 = fastVEC(mrc2_p1, mrc_N2_p1, dreso=bandwidth, density_map=mrc2.data)
-            mrc_N2_p2 = fastVEC(mrc2_p2, mrc_N2_p2, dreso=bandwidth, density_map=mrc2.data)
-            mrc_N2_p3 = fastVEC(mrc2_p3, mrc_N2_p3, dreso=bandwidth, density_map=mrc2.data)
-            mrc_N2_p4 = fastVEC(mrc2_p4, mrc_N2_p4, dreso=bandwidth, density_map=mrc2.data)
+            mrc_N2 = fastVEC(mrc2, mrc_N2, dreso=bandwidth)
+            mrc_N2_p1 = fastVEC(mrc2_p1, mrc_N2_p1, dreso=args.B, density_map=mrc2.data)
+            mrc_N2_p2 = fastVEC(mrc2_p2, mrc_N2_p2, dreso=args.B, density_map=mrc2.data)
+            mrc_N2_p3 = fastVEC(mrc2_p3, mrc_N2_p3, dreso=args.B, density_map=mrc2.data)
+            mrc_N2_p4 = fastVEC(mrc2_p4, mrc_N2_p4, dreso=args.B, density_map=mrc2.data)
 
             search_map_fft_prob(mrc_N1, mrc_N2, mrc_N1_p1, mrc_N1_p2, mrc_N1_p3, mrc_N1_p4, mrc_N2_p1, mrc_N2_p2,
                                 mrc_N2_p3, mrc_N2_p4, ang=angle_spacing, alpha=alpha, TopN=topN,

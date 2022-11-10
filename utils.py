@@ -3,6 +3,7 @@ import copy
 import numba
 import numpy as np
 from scipy.interpolate import RegularGridInterpolator
+from scipy.spatial.transform import Rotation as R
 
 interp = None
 
@@ -147,7 +148,7 @@ def calc_prob(stp, endp, pos, density_data, prob_data, fsiv):
 
 
 @numba.jit(nopython=True)
-def calc(stp, endp, pos, mrc1_data, fsiv):
+def calc(stp, endp, pos, data, fsiv):
     """Calculate the density and vector in resized map using Gaussian interpolation in original MRC density map"""
     dtotal = 0.0
     pos2 = np.zeros((3,))
@@ -162,7 +163,7 @@ def calc(stp, endp, pos, mrc1_data, fsiv):
                 rz = float(zp) - pos[2]
                 rz = rz ** 2
                 d2 = rx + ry + rz
-                v = mrc1_data[xp][yp][zp] * np.exp(-1.5 * d2 * fsiv)
+                v = data[xp][yp][zp] * np.exp(-1.5 * d2 * fsiv)
                 dtotal += v
                 pos2[0] += v * xp
                 pos2[1] += v * yp
@@ -195,16 +196,29 @@ def fastVEC(src, dest, dreso=16.0, density_map=None):
     src_dims = np.array((src.xdim, src.ydim, src.zdim))
     dest_dims = np.array((dest.xdim, dest.ydim, dest.zdim))
 
-    dest_data, dest_vec = doFastVEC(src.xwidth, src.orig, src_dims, src.data,
-                                    dest.xwidth, dest.orig, dest_dims, dest.data, dest.vec,
-                                    dreso, density_map=density_map)
+    if np.sum(src.data) != 0:
 
-    # calculate map statistics
-    dsum = np.sum(dest_data)
-    Nact = np.count_nonzero(dest_data)
-    ave = np.mean(dest_data[dest_data > 0])
-    std = np.linalg.norm(dest_data[dest_data > 0])
-    std_norm_ave = np.linalg.norm(dest_data[dest_data > 0] - ave)
+        dest_data, dest_vec = doFastVEC(src.xwidth, src.orig, src_dims, src.data,
+                                        dest.xwidth, dest.orig, dest_dims, dest.data, dest.vec,
+                                        dreso, density_map=density_map)
+
+        # calculate map statistics
+        dsum = np.sum(dest_data)
+        Nact = np.count_nonzero(dest_data)
+        ave = np.mean(dest_data[dest_data > 0])
+        std = np.linalg.norm(dest_data[dest_data > 0])
+        std_norm_ave = np.linalg.norm(dest_data[dest_data > 0] - ave)
+
+
+
+    else:
+        dsum = 0
+        Nact = 0
+        ave = 0
+        std = 0
+        std_norm_ave = 0
+        dest_data = np.zeros(dest_dims)
+        dest_vec = np.zeros((dest_dims[0], dest_dims[1], dest_dims[2], 3))
 
     print("#MAP SUM={sum} COUNT={cnt} AVE={ave} STD={std} STD_norm={std_norm}".format(sum=dsum,
                                                                                       cnt=Nact,
@@ -480,23 +494,37 @@ def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx):
             * (combined_arr[:, 2] < dim)
     )
 
+    # in_bound_mask = (
+    #         (old_pos[:, 0] >= 0)
+    #         * (old_pos[:, 1] >= 0)
+    #         * (old_pos[:, 2] >= 0)
+    #         * (old_pos[:, 0] < dim)
+    #         * (old_pos[:, 1] < dim)
+    #         * (old_pos[:, 2] < dim)
+    # )
+
     # init new vec and dens array
     new_vec_array = np.zeros_like(orig_mrc_vec)
     new_data_array = np.zeros_like(orig_mrc_data)
 
-    # # get the mask of all the values inside boundary
+    # get the mask of all the values inside boundary
     combined_arr = combined_arr[in_bound_mask]
-    #
-    # # convert the index to integer
+
+    # convert the index to integer
     combined_arr = combined_arr.astype(np.int32)
-    #
-    # # get the old index array
+
+    # get the old index array
     index_arr = combined_arr[:, 0:3]
+
+    # index_arr = old_pos[in_bound_mask].astype(np.int32)
 
     # get the index that has non-zero density by masking
 
     dens_mask = orig_mrc_data[index_arr[:, 0], index_arr[:, 1], index_arr[:, 2]] != 0.0
     non_zero_rot_list = combined_arr[dens_mask]
+
+    # dens_mask = orig_mrc_data[index_arr[:, 0], index_arr[:, 1], index_arr[:, 2]] != 0.0
+    # non_zero_rot_list = old_pos[dens_mask].astype(np.int32)
 
     # get the non-zero vec and dens values
     non_zero_vec = orig_mrc_vec[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
@@ -506,7 +534,8 @@ def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx):
     new_vec = np.einsum("ij, kj->ki", mtx, non_zero_vec)
 
     # find the new indices
-    new_ind_arr = (non_zero_rot_list[:, 3:6] + cent).astype(int)
+    new_ind_arr = (non_zero_rot_list[:, 3:6] + cent).astype(np.int32)
+    #new_ind_arr = (new_pos[dens_mask] + cent).astype(np.int32)
 
     # fill in the values to new vec and dens array
     new_vec_array[new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]] = new_vec
@@ -1020,16 +1049,16 @@ def calc_angle_comb(ang_interval):
         i += ang_interval
 
     angle_comb = np.array(np.meshgrid(x_angle, y_angle, z_angle)).T.reshape(-1, 3)
-    return angle_comb
-    # seen = set()
-    # uniq = []
-    # for ang in angle_comb:
-    #     quat = tuple(np.round(R.from_euler('ZYX', ang, degrees=True).as_quat(), 4))
-    #     if quat not in seen:
-    #         uniq.append(ang)
-    #         seen.add(quat)
-    #
-    # return uniq
+    # return angle_comb
+    seen = set()
+    uniq = []
+    for ang in angle_comb:
+        quat = tuple(np.round(R.from_euler('ZYX', ang, degrees=True).as_quat(), 4))
+        if quat not in seen:
+            uniq.append(ang)
+            seen.add(quat)
+
+    return uniq
 
 
 def convert_trans(cen1, cen2, r, trans, xwidth2, dim):
