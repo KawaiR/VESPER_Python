@@ -115,7 +115,10 @@ def chimera_gen_mrc(pdb_path, mrc_path, output_path, sample_res):
 def gen_npy(pdb_path, target_mrc, sample_res, save_npy=False):
     print("Combining MRC files into a Numpy array...")
 
-    os.system("rm -r ./tmp_data")
+    # remove tmp directory if exists
+    if os.path.exists("./tmp_data"):
+        os.system("rm -r ./tmp_data")
+    #os.system("rm -r ./tmp_data")
 
     os.makedirs("./tmp_data/ss/", exist_ok=True)
     os.makedirs("./tmp_data/pdb/", exist_ok=True)

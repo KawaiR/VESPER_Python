@@ -322,138 +322,60 @@ def doFastVEC(src_xwidth, src_orig, src_dims, src_data,
     return dest_data, dest_vec
 
 
-# def fastVEC(src, dest, dreso=16.0, prob_map=False, density_map=None):
-#     if prob_map is True and density_map is None:
-#         print("Error: density_map is not defined")
-#         exit(-1)
-#
-#     src_xwidth = src.xwidth
-#     src_orig = src.orig
-#     src_dims = np.array((src.xdim, src.ydim, src.zdim))
-#     dest_xwidth = dest.xwidth
-#     dest_orig = dest.orig
-#     dest_dims = np.array((dest.xdim, dest.ydim, dest.zdim))
-#
-#     # type cast to ensure function signature match
-#     dest_data, dest_vec = doFastVEC(src_xwidth, src_orig, src_dims.astype(np.int32), src.data,
-#                                     dest_xwidth, dest_orig, dest_dims.astype(np.int32),
-#                                     dest.vec, dest.data, dreso, prob_map, density_map)
-#
-#     dsum = np.sum(dest_data)
-#     Nact = np.count_nonzero(dest_data)
-#
-#     # gracefully handle the case where no active voxels are found
-#     if Nact == 0:
-#         print("Error: No density value after resampling. Is the voxel spacing parameter too large?")
-#         exit(-1)
-#
-#     ave = np.mean(dest_data[dest_data > 0])
-#     std = np.linalg.norm(dest_data[dest_data > 0])
-#     std_norm_ave = np.linalg.norm(dest_data[dest_data > 0] - ave)
-#
-#     print("#MAP SUM={sum} COUNT={cnt} AVE={ave} STD={std} STD_norm={std_norm}".format(sum=dsum,
-#                                                                                       cnt=Nact,
-#                                                                                       ave=ave,
-#                                                                                       std=std,
-#                                                                                       std_norm=std_norm_ave))
-#
-#     dest.data = dest_data
-#     dest.vec = dest_vec
-#     dest.dsum = dsum
-#     dest.Nact = Nact
-#     dest.ave = ave
-#     dest.std = std
-#     dest.std_norm_ave = std_norm_ave
-#
-#     return dest
-#
-#
-# # original function signature for linux platform
-# # @numba.njit((numba.float64, numba.float32[:], numba.int64[:], numba.float32[:, :, :], numba.float64, numba.float64[:],
-# #              numba.int64[:], numba.float32[:, :, :, :], numba.float32[:, :, :], numba.float64, numba.boolean,
-# #              numba.float32[:, :, :]), parallel=True)
-# @numba.njit((numba.float64, numba.float32[:], numba.int32[:], numba.float32[:, :, :], numba.float64, numba.float64[:],
-#              numba.int32[:], numba.float32[:, :, :, :], numba.float32[:, :, :], numba.float64, numba.boolean,
-#              numba.float32[:, :, :]))
-# def doFastVEC(src_xwidth, src_orig, src_dims, src_data,
-#               dest_xwidth, dest_orig, dest_dims, dest_vec, dest_data,
-#               dreso=16.0, prob_map=False, density_map=None):
-#
-#     gstep = src_xwidth  # grid step
-#     fs = (dreso / gstep) * 0.5  # 0.5 is the factor to make the Gaussian kernel narrower
-#     fs = fs ** 2  # fs is the variance of the Gaussian kernel
-#     fsiv = 1.0 / fs  # fsiv is the inverse of the variance of the Gaussian kernel
-#     fmaxd = (dreso / gstep) * 2.0
-#
-#     # print("#maxd={fmaxd}".format(fmaxd=fmaxd), "#fsiv=" + str(fsiv))
-#
-#     for x in range(dest_dims[0]):
-#         for y in range(dest_dims[1]):
-#             for z in range(dest_dims[2]):
-#
-#                 xyz_arr = np.array((x, y, z))
-#                 pos = (xyz_arr * dest_xwidth + dest_orig - src_orig) / src_xwidth
-#
-#                 # check density
-#
-#                 if (
-#                         pos[0] < 0
-#                         or pos[1] < 0
-#                         or pos[2] < 0
-#                         or pos[0] >= src_dims[0]
-#                         or pos[1] >= src_dims[1]
-#                         or pos[2] >= src_dims[2]
-#                 ):
-#                     continue
-#
-#                 if src_data[int(pos[0])][int(pos[1])][int(pos[2])] == 0:
-#                     continue
-#
-#                 # Start Point
-#                 stp = (pos - fmaxd).astype(np.int32)
-#
-#                 # set start and end point
-#                 if stp[0] < 0:
-#                     stp[0] = 0
-#                 if stp[1] < 0:
-#                     stp[1] = 0
-#                 if stp[2] < 0:
-#                     stp[2] = 0
-#
-#                 # End Point
-#                 endp = (pos + fmaxd + 1).astype(np.int32)
-#
-#                 if endp[0] >= src_dims[0]:
-#                     endp[0] = src_dims[0]
-#                 if endp[1] >= src_dims[1]:
-#                     endp[1] = src_dims[1]
-#                 if endp[2] >= src_dims[2]:
-#                     endp[2] = src_dims[2]
-#
-#                 if prob_map:
-#                     # calculate weighted average over the region
-#                     dest_data[x][y][z] = calc_avg(stp, endp, src_data, density_map)
-#                 else:
-#                     # compute the total density and vector with Gaussian weight
-#                     dtotal, pos2 = calc(stp, endp, pos, src_data, fsiv)
-#                     dest_data[x][y][z] = dtotal
-#                     if dtotal == 0:
-#                         continue
-#
-#                     # vector normalization
-#                     rd = 1.0 / dtotal
-#                     pos2 *= rd
-#                     tmpcd = pos2 - pos
-#                     dvec = np.sqrt(tmpcd[0] ** 2 + tmpcd[1] ** 2 + tmpcd[2] ** 2)
-#
-#                     if dvec == 0:
-#                         dvec = 1.0
-#
-#                     rdvec = 1.0 / dvec
-#
-#                     dest_vec[x][y][z] = tmpcd * rdvec
-#
-#     return dest_data, dest_vec
+def new_rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, new_pos_grid):
+    # set the dimension to be x dimension as all dimension are the same
+    dim = orig_mrc_data.shape[0]
+
+    # set the rotation center
+    cent = 0.5 * float(dim)
+
+    new_pos = new_pos_grid.copy()
+
+    # get relative new positions from center
+    new_pos = new_pos - cent
+
+    # reversely rotate the new position lists to get old positions
+    # old_pos = np.einsum("ij, kj->ki", mtx.T, new_pos) + cent
+    old_pos = new_pos @ mtx + 0.5 * float(dim)
+
+    # init new vec and dens array
+    new_vec_array = np.zeros_like(orig_mrc_vec)
+    new_data_array = np.zeros_like(orig_mrc_data)
+
+    in_bound_mask = (
+            (old_pos[:, 0] >= 0)
+            * (old_pos[:, 1] >= 0)
+            * (old_pos[:, 2] >= 0)
+            * (old_pos[:, 0] < dim)
+            * (old_pos[:, 1] < dim)
+            * (old_pos[:, 2] < dim)
+    )
+
+    # get valid old positions in bound
+    valid_old_pos = (old_pos[in_bound_mask]).astype(np.int32)
+
+    # get nonzero density positions in the map
+    non_zero_mask = orig_mrc_data[valid_old_pos[:, 0], valid_old_pos[:, 1], valid_old_pos[:, 2]] > 0
+
+    # apply nonzero mask to valid positions
+    non_zero_old_pos = valid_old_pos[non_zero_mask]
+
+    # get corresponding new positions
+    new_pos = (new_pos[in_bound_mask][non_zero_mask] + cent).astype(np.int32)
+
+    # fill new density entries
+    new_data_array[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = orig_mrc_data[non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+
+    # fetch and rotate the vectors
+    non_zero_vecs = orig_mrc_vec[non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+    new_vec = non_zero_vecs @ mtx.T
+    # new_vec = np.einsum("ij, kj->ki", mtx, non_zero_vecs)
+
+    # fill new vector entries
+    new_vec_array[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = new_vec
+
+    return new_vec_array, new_data_array
+
 
 def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx):
     """A function to rotation the density and vector array by a specified angle.
@@ -494,15 +416,6 @@ def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx):
             * (combined_arr[:, 2] < dim)
     )
 
-    # in_bound_mask = (
-    #         (old_pos[:, 0] >= 0)
-    #         * (old_pos[:, 1] >= 0)
-    #         * (old_pos[:, 2] >= 0)
-    #         * (old_pos[:, 0] < dim)
-    #         * (old_pos[:, 1] < dim)
-    #         * (old_pos[:, 2] < dim)
-    # )
-
     # init new vec and dens array
     new_vec_array = np.zeros_like(orig_mrc_vec)
     new_data_array = np.zeros_like(orig_mrc_data)
@@ -535,7 +448,7 @@ def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx):
 
     # find the new indices
     new_ind_arr = (non_zero_rot_list[:, 3:6] + cent).astype(np.int32)
-    #new_ind_arr = (new_pos[dens_mask] + cent).astype(np.int32)
+    # new_ind_arr = (new_pos[dens_mask] + cent).astype(np.int32)
 
     # fill in the values to new vec and dens array
     new_vec_array[new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]] = new_vec
