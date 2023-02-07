@@ -323,20 +323,19 @@ def doFastVEC(src_xwidth, src_orig, src_dims, src_data,
 
 
 def new_rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, new_pos_grid):
+
     # set the dimension to be x dimension as all dimension are the same
     dim = orig_mrc_data.shape[0]
 
     # set the rotation center
     cent = 0.5 * float(dim)
 
-    new_pos = new_pos_grid.copy()
-
     # get relative new positions from center
-    new_pos = new_pos - cent
+    new_pos = new_pos_grid - cent
 
     # reversely rotate the new position lists to get old positions
-    # old_pos = np.einsum("ij, kj->ki", mtx.T, new_pos) + cent
-    old_pos = new_pos @ mtx + 0.5 * float(dim)
+    old_pos = np.einsum("ij, kj->ki", mtx.T, new_pos) + cent
+    #old_pos = new_pos @ mtx + 0.5 * float(dim)
 
     # init new vec and dens array
     new_vec_array = np.zeros_like(orig_mrc_vec)
@@ -368,8 +367,9 @@ def new_rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, new_pos_grid):
 
     # fetch and rotate the vectors
     non_zero_vecs = orig_mrc_vec[non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
-    new_vec = non_zero_vecs @ mtx.T
-    # new_vec = np.einsum("ij, kj->ki", mtx, non_zero_vecs)
+
+    #new_vec = non_zero_vecs @ mtx.T
+    new_vec = np.einsum("ij, kj->ki", mtx, non_zero_vecs)
 
     # fill new vector entries
     new_vec_array[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = new_vec
@@ -788,6 +788,64 @@ def save_pdb(origin,
 #
 #     return new_vec_array, new_data_array, new_p1, new_p2, new_p3, new_p4
 
+
+def new_rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx, new_pos_grid):
+
+    dim = data.shape[0]
+    cent = 0.5 * float(dim)
+    new_pos = new_pos_grid - cent
+
+    # reversely rotate the new position lists to get old positions
+    old_pos = np.einsum("ij, kj->ki", mtx.T, new_pos) + cent
+
+    # create new array for density, vector and probability
+    new_vec_array = np.zeros_like(vec)
+    new_data_array = np.zeros_like(data)
+    new_p1 = np.zeros_like(prob_c1)
+    new_p2 = np.zeros_like(prob_c2)
+    new_p3 = np.zeros_like(prob_c3)
+    new_p4 = np.zeros_like(prob_c4)
+
+    in_bound_mask = (
+            (old_pos[:, 0] >= 0)
+            * (old_pos[:, 1] >= 0)
+            * (old_pos[:, 2] >= 0)
+            * (old_pos[:, 0] < dim)
+            * (old_pos[:, 1] < dim)
+            * (old_pos[:, 2] < dim)
+    )
+
+    # get valid old positions in bound
+    valid_old_pos = (old_pos[in_bound_mask]).astype(np.int32)
+
+    # get nonzero density positions in the map
+    non_zero_mask = data[valid_old_pos[:, 0], valid_old_pos[:, 1], valid_old_pos[:, 2]] > 0
+
+    # apply nonzero mask to valid positions
+    non_zero_old_pos = valid_old_pos[non_zero_mask]
+
+    # get corresponding new positions
+    new_pos = (new_pos[in_bound_mask][non_zero_mask] + cent).astype(np.int32)
+
+    # fill new density entries
+    new_data_array[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = data[non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+    new_p1[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = prob_c1[non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+    new_p2[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = prob_c2[non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+    new_p3[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = prob_c3[non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+    new_p4[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = prob_c4[non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+
+    # fetch and rotate the vectors
+    non_zero_vecs = vec[non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+
+    #new_vec = non_zero_vecs @ mtx.T
+    new_vec = np.einsum("ij, kj->ki", mtx, non_zero_vecs)
+
+    # fill new vector entries
+    new_vec_array[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = new_vec
+
+    return new_vec_array, new_data_array, new_p1, new_p2, new_p3, new_p4
+
+
 def rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx):
     dim = data.shape[0]
 
@@ -939,7 +997,7 @@ def get_score(
         + str(pcc / (pstd1 * pstd2))
     )
 
-    print("Score=", sco_sum)
+    print("DOT Score=", sco_sum)
     return sco_arr
 
 

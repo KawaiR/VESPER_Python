@@ -76,40 +76,40 @@ def find_best_trans_list(input_list):
     return best, trans
 
 
-def find_best_trans_list_prob(input_list, alpha):
-    """find the best translation based on list of Z score normalised FFT transformation results
-
-    Args:
-        input_list (numpy.array): FFT result list
-        alpha (float): weighting parameter
-
-    Returns:
-        best (float): the maximum score found
-        trans (list(int)): the best translation associated with the maximum score
-        best_prob: the maximum probability normalised score
-    """
-
-    sum_arr = np.zeros_like(input_list[0])
-    # for arr in input_list:
-    dot_array = input_list[0] + input_list[1] + input_list[2]
-    # avg_dot=np.sum(dot_array)/(dot_array.shape[0])
-    ave_dot = np.mean(dot_array)
-    std_dot = np.std(dot_array)
-    dot_array_z = (dot_array - ave_dot) / std_dot
-
-    prob_array = input_list[3] + input_list[4] + input_list[5] + input_list[6]
-    # avg_dot=np.sum(dot_array)/(dot_array.shape[0])
-    ave_prob = np.mean(prob_array)
-    std_prob = np.std(prob_array)
-    prob_array_z = (prob_array - ave_prob) / std_prob
-
-    sum_arr = alpha * dot_array_z + (1 - alpha) * prob_array_z
-
-    best = np.amax(sum_arr)
-    best_prob = np.amax(prob_array_z)
-    trans = np.unravel_index(sum_arr.argmax(), sum_arr.shape)
-
-    return best, trans, best_prob
+# def find_best_trans_list_prob(input_list, alpha):
+#     """find the best translation based on list of Z score normalised FFT transformation results
+#
+#     Args:
+#         input_list (numpy.array): FFT result list
+#         alpha (float): weighting parameter
+#
+#     Returns:
+#         best (float): the maximum score found
+#         trans (list(int)): the best translation associated with the maximum score
+#         best_prob: the maximum probability normalised score
+#     """
+#
+#     sum_arr = np.zeros_like(input_list[0])
+#     # for arr in input_list:
+#     dot_array = input_list[0] + input_list[1] + input_list[2]
+#     # avg_dot=np.sum(dot_array)/(dot_array.shape[0])
+#     ave_dot = np.mean(dot_array)
+#     std_dot = np.std(dot_array)
+#     dot_array_z = (dot_array - ave_dot) / std_dot
+#
+#     prob_array = input_list[3] + input_list[4] + input_list[5] + input_list[6]
+#     # avg_dot=np.sum(dot_array)/(dot_array.shape[0])
+#     ave_prob = np.mean(prob_array)
+#     std_prob = np.std(prob_array)
+#     prob_array_z = (prob_array - ave_prob) / std_prob
+#
+#     sum_arr = alpha * dot_array_z + (1 - alpha) * prob_array_z
+#
+#     best = np.amax(sum_arr)
+#     best_prob = np.amax(prob_array_z)
+#     trans = np.unravel_index(sum_arr.argmax(), sum_arr.shape)
+#
+#     return best, trans, best_prob
 
 
 def fft_search_score_trans(target_X, target_Y, target_Z, search_vec, a, b, c, fft_object, ifft_object):
@@ -261,6 +261,9 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
 
         exit(0)
 
+    # init rotation grid
+    search_pos_grid = np.mgrid[0:mrc_search.data.shape[0], 0:mrc_search.data.shape[0], 0:mrc_search.data.shape[0]].reshape(3, -1).T
+
     # init the target map vectors
     x1 = copy.deepcopy(mrc_target.vec[:, :, :, 0])
 
@@ -316,7 +319,8 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
                                                         (a, b, c),
                                                         fft_object,
                                                         ifft_object,
-                                                        mode=mode)
+                                                        mode=mode,
+                                                        new_pos_grid=search_pos_grid)
         angle_score.append({
             "angle": angle,
             "vec_score": vec_score * rd3,
@@ -385,7 +389,8 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
                                                                              (a, b, c),
                                                                              fft_object,
                                                                              ifft_object,
-                                                                             mode=mode)
+                                                                             mode=mode,
+                                                                             new_pos_grid=search_pos_grid)
                 refined_score.append({"angle": tuple(angle),
                                       "vec_score": vec_score * rd3,
                                       "vec_trans": vec_trans,
@@ -453,7 +458,7 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
         if folder is not None:
             folder_path = Path.cwd() / folder
         else:
-            folder_path = Path.cwd() / ("VESPER_RUN_" + datetime.now().strftime('%m%d_%H%M'))
+            folder_path = Path.cwd() / ("VESPER_RUN_" + datetime.now().strftime('%m%d_%H%M%S'))
         Path.mkdir(folder_path)
         print("\n###Writing results to PDB files###")
     else:
@@ -501,6 +506,12 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
 
     return refined_list
 
+
+def format_score_result(result, ave, std):
+    return (f"Rotation {result['angle']}, DOT Score: {result['vec_score']}, DOT Trans: {result['vec_trans']}, " +
+            f"Prob Score: {result['prob_score']}, Prob Trans: {result['prob_trans']}, " +
+            f"MIX Score: {result['mixed_score']}, MIX Trans: {result['mixed_trans']}, " +
+            f"Normalized Mix Score: {(result['mixed_score'] - ave) / std}")
 
 def search_map_fft_prob(mrc_target, mrc_input, mrc_P1, mrc_P2, mrc_P3, mrc_P4, mrc_search_p1, mrc_search_p2,
                         mrc_search_p3, mrc_search_p4, ang, alpha=0.0, TopN=10, vave=-1, vstd=-1, pave=-1, pstd=-1,
@@ -582,6 +593,9 @@ def search_map_fft_prob(mrc_target, mrc_input, mrc_P1, mrc_P2, mrc_P3, mrc_P4, m
 
     angle_score = []
 
+    # init rotation grid
+    search_pos_grid = np.mgrid[0:mrc_input.data.shape[0], 0:mrc_input.data.shape[0], 0:mrc_input.data.shape[0]].reshape(3, -1).T
+
     if vave >= 0 and vstd >= 0 and pstd >= 0 and pave >= 0:
         pass
     else:
@@ -596,7 +610,8 @@ def search_map_fft_prob(mrc_target, mrc_input, mrc_P1, mrc_P2, mrc_P3, mrc_P4, m
                                                                                          target_list,
                                                                                          0.0,
                                                                                          (a, b, c),
-                                                                                         fft_object, ifft_object)
+                                                                                         fft_object, ifft_object,
+                                                                                         new_pos_grid=search_pos_grid)
             angle_score.append({
                 "angle": angle,
                 "vec_score": vec_score * rd3,
@@ -609,15 +624,15 @@ def search_map_fft_prob(mrc_target, mrc_input, mrc_P1, mrc_P2, mrc_P3, mrc_P4, m
         score_arr_vec = np.array([row["vec_score"] for row in angle_score])
         score_arr_prob = np.array([row["prob_score"] for row in angle_score])
 
-        vstd = np.std(score_arr_vec)
-        vave = np.mean(score_arr_vec)
-        pstd = np.std(score_arr_prob)
-        pave = np.mean(score_arr_prob)
+        vstd = np.std(score_arr_vec / rd3)
+        vave = np.mean(score_arr_vec / rd3)
+        pstd = np.std(score_arr_prob / rd3)
+        pave = np.mean(score_arr_prob / rd3)
 
     print()
-    print("DotScore Std=", vstd, "DotScore Ave=", vave)
-    print("ProbScore Std=", pstd, "ProbScore Ave=", pave)
-    print()
+    print("### Result Statistics ###")
+    print("DotScore Std=", vstd, "DotScore Ave=", vave, "Normalized by", mrc_input.xdim**3, "voxels", "Normalized DotScore Ave=", vave * rd3, "Normalized DotScore Std=", vstd * rd3)
+    print("ProbScore Std=", pstd, "ProbScore Ave=", pave, "Normalized by", mrc_input.xdim**3, "voxels", "Normalized ProbScore Ave=", pave * rd3, "Normalized ProbScore Std=", pstd * rd3)
 
     angle_score = []
 
@@ -633,29 +648,56 @@ def search_map_fft_prob(mrc_target, mrc_input, mrc_P1, mrc_P2, mrc_P3, mrc_P4, m
             target_list,
             alpha,
             (a, b, c), fft_object, ifft_object,
-            vstd=vstd, vave=vave, pstd=pstd, pave=pave)
+            vstd=vstd, vave=vave, pstd=pstd, pave=pave, new_pos_grid=search_pos_grid)
 
         if mixed_score is None:
             mixed_score = 0
         if mixed_trans is None:
             mixed_trans = []
 
+        norm_vec_score = (vec_score - vave) / vstd
+        norm_prob_score = (prob_score - pave) / pstd
+
         angle_score.append({
-            "angle": angle,
+            "angle": tuple(angle),
             "vec_score": vec_score * rd3,
             "vec_trans": vec_trans,
             "prob_score": prob_score * rd3,
             "prob_trans": prob_trans,
-            "mixed_score": mixed_score * rd3,
-            "mixed_trans": mixed_trans
+            "mixed_score": mixed_score,
+            "mixed_trans": mixed_trans,
+            "norm_vec_score": norm_vec_score,
+            "norm_prob_score": norm_prob_score,
         })
 
     # sort the list and save topN
-    sorted_top_n = sorted(angle_score, key=lambda x: x["mixed_score"], reverse=True)[:TopN]
+    sorted_score = sorted(angle_score, key=lambda x: x["vec_score"], reverse=True)
+    sorted_top_n = sorted_score[:TopN]
+
+    # calculate mixed score statistics
+    mixed_score_list = [row["mixed_score"] for row in angle_score]
+    mixed_score_list = np.array(mixed_score_list)
+    mixed_score_std = np.std(mixed_score_list)
+    mixed_score_ave = np.mean(mixed_score_list)
+
+    # print statistics
+    print(f"MixedScore Std={mixed_score_std}, " +
+          f"MixedScore Ave={mixed_score_ave}, " +
+          f"Normalized by {mrc_input.xdim**3} voxels, " +
+          f"Normalized MixedScore Ave={mixed_score_ave * rd3}, "+
+          f"Normalized MixedScore Std={mixed_score_std * rd3}")
+
+    print("### Fitted Positions ###")
+    # print score list
+    for result in sorted_score:
+        print(format_score_result(result, mixed_score_ave, mixed_score_std))
+
+    print()
+    print("### Top", TopN, "Results ###")
 
     # print TopN statistics
     for idx, x in enumerate(sorted_top_n):
-        print("M", str(idx + 1), x)
+        print("M", str(idx + 1), format_score_result(x, mixed_score_ave, mixed_score_std))
 
     # 5 degrees local refinement search
     if ang > 5.0:
@@ -693,7 +735,7 @@ def search_map_fft_prob(mrc_target, mrc_input, mrc_P1, mrc_P2, mrc_P3, mrc_P4, m
                     alpha,
                     (a, b, c), fft_object, ifft_object,
                     ret_data=True,
-                    vstd=vstd, vave=vave, pstd=pstd, pave=pave)
+                    vstd=vstd, vave=vave, pstd=pstd, pave=pave, new_pos_grid=search_pos_grid)
 
                 refined_score.append(
                     {"angle": tuple(ang),
@@ -703,21 +745,30 @@ def search_map_fft_prob(mrc_target, mrc_input, mrc_P1, mrc_P2, mrc_P3, mrc_P4, m
                      "data": r_data,
                      "prob_score": prob_score * rd3,
                      "prob_trans": prob_trans,
-                     "mixed_score": mixed_score * rd3,
-                     "mixed_trans": mixed_trans})
+                     "mixed_score": mixed_score,
+                     "mixed_trans": mixed_trans,
+                     "norm_vec_score": (vec_score - vave) / vstd,
+                     "norm_prob_score": (prob_score - pave) / pstd,
+                     })
 
             refined_list.append(max(refined_score, key=lambda x: x["mixed_score"]))
         refined_list = sorted(refined_list, key=lambda x: x["mixed_score"], reverse=True)  # re-sort the list
     else:
         refined_list = sorted_top_n
 
+    print("### Refined Fitted Positions ###")
+    # print score list
+    for idx, result in enumerate(refined_list):
+        print("R", str(idx + 1), format_score_result(result, mixed_score_ave, mixed_score_std))
+
     if showPDB:
         # Write result to PDB files
         if folder is not None:
             folder_path = Path.cwd() / folder
         else:
-            folder_path = Path.cwd() / ("VESPER_RUN_" + datetime.now().strftime('%m%d_%H%M'))
+            folder_path = Path.cwd() / ("VESPER_RUN_" + datetime.now().strftime('%m%d_%H%M%S'))
         Path.mkdir(folder_path)
+        print()
         print("###Writing results to PDB files###")
     else:
         print()
@@ -725,7 +776,7 @@ def search_map_fft_prob(mrc_target, mrc_input, mrc_P1, mrc_P2, mrc_P3, mrc_P4, m
     for i, result_mrc in enumerate(refined_list):
         # convert the translation back to the original coordinate system
         r = R.from_euler('xyz', result_mrc["angle"], degrees=True)
-        new_trans = convert_trans(mrc_target.cent,
+        real_trans = convert_trans(mrc_target.cent,
                                   mrc_input.cent,
                                   r,
                                   result_mrc["mixed_trans"],
@@ -738,14 +789,16 @@ def search_map_fft_prob(mrc_target, mrc_input, mrc_P1, mrc_P2, mrc_P3, mrc_P4, m
               str(result_mrc["angle"][1]),
               str(result_mrc["angle"][2]) + ")",
               "Translation=",
-              "(" + "{:.3f}".format(new_trans[0]),
-              "{:.3f}".format(new_trans[1]),
-              "{:.3f}".format(new_trans[2]) + ")"
+              "(" + "{:.3f}".format(real_trans[0]),
+              "{:.3f}".format(real_trans[1]),
+              "{:.3f}".format(real_trans[2]) + ")"
               )
 
-        print("Translation=", str(result_mrc["vec_trans"]),
+        print("DOT Translation=", str(result_mrc["vec_trans"]),
               "Probability Score=", str(result_mrc["prob_score"]),
               "Probability Translation=", str(result_mrc["prob_trans"]))
+
+        print("Mixed Score=", str(result_mrc["mixed_score"]), "Normalized Mix Score:", (result_mrc["mixed_score"] - mixed_score_ave) / mixed_score_std)
 
         sco_arr = get_score(
             mrc_target,
@@ -771,7 +824,7 @@ def search_map_fft_prob(mrc_target, mrc_input, mrc_P1, mrc_P2, mrc_P3, mrc_P4, m
 
 def rot_and_search_fft(data, vec, angle, target_list, mrc_target,
                        fft_list, fft_obj, ifft_obj,
-                       mode="VecProduct"):
+                       mode="VecProduct", new_pos_grid=None):
     """
     It rotates the query map and vector representation, then searches for the best translation using FFT
     :param data: the 3D map to be rotated
@@ -786,7 +839,8 @@ def rot_and_search_fft(data, vec, angle, target_list, mrc_target,
     rot_mtx = R.from_euler("xyz", angle, degrees=True).as_matrix()
 
     # Rotate the query map and vector representation
-    new_vec, new_data = rot_mrc(data, vec, rot_mtx)
+    #new_vec, new_data = rot_mrc(data, vec, rot_mtx)
+    new_vec, new_data = new_rot_mrc(data, vec, rot_mtx, new_pos_grid)
 
     if mode == "VecProduct":
 
@@ -829,6 +883,7 @@ def rot_and_search_fft_prob(data, vec,
                             alpha,
                             fft_list, fft_obj, ifft_obj,
                             ret_data=False,
+                            new_pos_grid=None,
                             vstd=None, vave=None, pstd=None, pave=None):
     """ Calculate the best translation for the query map given a rotation angle
 
@@ -850,8 +905,9 @@ def rot_and_search_fft_prob(data, vec,
     rot_mtx = R.from_euler("xyz", angle, degrees=True).as_matrix()
 
     # Rotate the query map and vector representation
-    r_vec, r_data, rp1, rp2, rp3, rp4 = \
-        rot_mrc_prob(data, vec, dp1, dp2, dp3, dp4, rot_mtx)
+    # r_vec, r_data, rp1, rp2, rp3, rp4 = \
+    #     rot_mrc_prob(data, vec, dp1, dp2, dp3, dp4, rot_mtx)
+    r_vec, r_data, rp1, rp2, rp3, rp4 = new_rot_mrc_prob(data, vec, dp1, dp2, dp3, dp4, rot_mtx, new_pos_grid)
 
     # Compose the query FFT list
 
@@ -891,6 +947,7 @@ def rot_and_search_fft_prob(data, vec,
     return vec_score, vec_trans, prob_score, prob_trans, mixed_score, mixed_trans
 
 
+
 def find_best_trans_mixed(vec_fft_results, prob_fft_results, alpha, vstd, vave, pstd, pave):
     """
     It takes the sum of the two arrays, normalizes them, mixes them, and then finds the best translation
@@ -898,14 +955,16 @@ def find_best_trans_mixed(vec_fft_results, prob_fft_results, alpha, vstd, vave, 
     :param prob_fft_results: the FFT of the probability map
     :param alpha: the weight of the probability map
     :param vstd: standard deviation of the vector fft results
-    :param vave: the average of the vector fft results
-    :param pstd: standard deviation of the probability distribution
-    :param pave: the average of the probability array
+    :param vave: the mean of the vector fft results
+    :param pstd: standard deviation of the secondary structure matching score fft results
+    :param pave: the mean of the secondary structure matching score fft results
     :return: The best score and the translation that produced it.
     """
-    sum_arr_v = sum(vec_fft_results)
+    sum_arr_v = vec_fft_results[0] + vec_fft_results[1] + vec_fft_results[2]
+
+    #sum_arr_v = sum(vec_fft_results)
     # sum_arr_p = sum(prob_fft_results)
-    sum_arr_p = sum((prob_fft_results[0], prob_fft_results[1], prob_fft_results[2]))
+    sum_arr_p = prob_fft_results[0] + prob_fft_results[1] + prob_fft_results[2]
 
     # z-score normalization
     sum_arr_v = (sum_arr_v - vave) / vstd
@@ -916,6 +975,6 @@ def find_best_trans_mixed(vec_fft_results, prob_fft_results, alpha, vstd, vave, 
 
     # find the best translation
     best_score = sum_arr_mixed.max()
-    trans = np.unravel_index(sum_arr_mixed.argmax(), sum_arr_mixed.shape)
+    best_trans = np.unravel_index(sum_arr_mixed.argmax(), sum_arr_mixed.shape)
 
-    return best_score, trans
+    return best_score, best_trans

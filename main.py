@@ -145,7 +145,7 @@ if __name__ == "__main__":
         modeVal = args.M
         evalMode = args.E
 
-        print("#Summary of the input parameters")
+        print("### Input Params Summary ###")
         print("Target MAP: ", objA)
         print("Search MAP: ", objB)
         print("Threshold of Target MAP: ", threshold1)
@@ -269,9 +269,11 @@ if __name__ == "__main__":
 
         num_processors = args.P
 
-        print("#Summary of the input parameters")
+        print("### Input Params Summary ###")
         print("Target MAP: ", objA)
         print("Search MAP: ", objB)
+        print("Target Secondary Structur Assignment: ", probA)
+        print("Search Secondary Structur Assignment: ", probB)
         print("Threshold of Target MAP: ", threshold1)
         print("Threshold of Search MAP: ", threshold2)
         print("Bandwidth of the Gaussian filter: ", bandwidth)
