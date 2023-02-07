@@ -8,6 +8,8 @@ import mrcfile
 import pyfftw
 from scipy.spatial.transform import Rotation as R
 from tqdm import tqdm
+from sklearn.cluster import DBSCAN
+from scipy.ndimage import center_of_mass
 
 from utils import *
 
@@ -757,9 +759,24 @@ def search_map_fft_prob(mrc_target, mrc_input, mrc_P1, mrc_P2, mrc_P3, mrc_P4, m
         refined_list = sorted_top_n
 
     print("### Refined Fitted Positions ###")
+
+    center_list = []
+    for result in refined_list:
+        center_list.append(center_of_mass(result["data"]) + result["mixed_trans"])
+
+    clustering = DBSCAN(eps=5, min_samples=2).fit(center_list)
+
+    # for each cluster, find the best result
+    refined_list_cluster = []
+    for cluster in np.unique(clustering.labels_):
+        # if cluster == -1:
+        #     continue
+        cluster_list = [refined_list[i] for i in np.where(clustering.labels_ == cluster)[0]]
+        refined_list_cluster.append(max(cluster_list, key=lambda x: x["mixed_score"]))
+
     # print score list
-    for idx, result in enumerate(refined_list):
-        print("R", str(idx + 1), format_score_result(result, mixed_score_ave, mixed_score_std))
+    for idx, result in enumerate(refined_list_cluster):
+        print("C", str(idx + 1), format_score_result(result, mixed_score_ave, mixed_score_std))
 
     if showPDB:
         # Write result to PDB files
@@ -818,6 +835,20 @@ def search_map_fft_prob(mrc_target, mrc_input, mrc_P1, mrc_P2, mrc_P3, mrc_P4, m
                      result_mrc["angle"],
                      folder_path,
                      i)
+
+    for i, result_mrc in enumerate(refined_list_cluster):
+        if showPDB:
+            save_pdb(mrc_target.orig,
+                     result_mrc["vec"],
+                     result_mrc["data"],
+                     sco_arr,
+                     result_mrc["mixed_score"],
+                     mrc_input.xwidth,
+                     result_mrc["mixed_trans"],
+                     result_mrc["angle"],
+                     folder_path,
+                     i,
+                     cluster=True)
 
     return refined_list
 

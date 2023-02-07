@@ -615,10 +615,14 @@ def save_pdb(origin,
              trans,
              angle,
              folder_path,
-             rank):
+             rank,
+             cluster=False):
     dim = sampled_mrc_data.shape[0]
 
-    filename = "R_{:02d}-S_{:>7.3f}.pdb".format(rank, score).replace(" ", "_")
+    if cluster:
+        filename = "C_{:1d}-S_{:>7.3f}.pdb".format(rank, score).replace(" ", "_")
+    else:
+        filename = "R_{:02d}-S_{:>7.3f}.pdb".format(rank, score).replace(" ", "_")
     # filename = "M_{:02d}-S_{:>7.3f}-A_{:>5.1f}_{:>5.1f}_{:>5.1f}-T_{:>3.0f}_{:>3.0f}_{:>3.0f}.pdb".format(
     #     rank,
     #     score,
