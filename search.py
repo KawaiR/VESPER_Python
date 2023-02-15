@@ -626,15 +626,17 @@ def search_map_fft_prob(mrc_target, mrc_input, mrc_P1, mrc_P2, mrc_P3, mrc_P4, m
         score_arr_vec = np.array([row["vec_score"] for row in angle_score])
         score_arr_prob = np.array([row["prob_score"] for row in angle_score])
 
-        vstd = np.std(score_arr_vec / rd3)
         vave = np.mean(score_arr_vec / rd3)
-        pstd = np.std(score_arr_prob / rd3)
+        vstd = np.std(score_arr_vec / rd3)
+
         pave = np.mean(score_arr_prob / rd3)
+        pstd = np.std(score_arr_prob / rd3)
 
     print()
     print("### Result Statistics ###")
-    print("DotScore Std=", vstd, "DotScore Ave=", vave, "Normalized by", mrc_input.xdim**3, "voxels", "Normalized DotScore Ave=", vave * rd3, "Normalized DotScore Std=", vstd * rd3)
-    print("ProbScore Std=", pstd, "ProbScore Ave=", pave, "Normalized by", mrc_input.xdim**3, "voxels", "Normalized ProbScore Ave=", pave * rd3, "Normalized ProbScore Std=", pstd * rd3)
+    print("Number of voxels:", mrc_target.xdim**3, "voxels")
+    print("DotScore Std=", vstd, "DotScore Ave=", vave)
+    print("ProbScore Std=", pstd, "ProbScore Ave=", pave)
 
     angle_score = []
 
@@ -673,7 +675,7 @@ def search_map_fft_prob(mrc_target, mrc_input, mrc_P1, mrc_P2, mrc_P3, mrc_P4, m
         })
 
     # sort the list and save topN
-    sorted_score = sorted(angle_score, key=lambda x: x["vec_score"], reverse=True)
+    sorted_score = sorted(angle_score, key=lambda x: x["mixed_score"], reverse=True)
     sorted_top_n = sorted_score[:TopN]
 
     # calculate mixed score statistics
