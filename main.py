@@ -190,10 +190,10 @@ if __name__ == "__main__":
         # mrc_N1 = fastVEC(mrc1, mrc_N1, dreso=bandwidth, density_map=mrc1.data)
         mrc_N1 = fastVEC(mrc1, mrc_N1, dreso=bandwidth)
         print("\n###Processing MAP2 Resampling###")
-        start_time = time.time()
+        # start_time = time.time()
         # mrc_N2 = fastVEC(mrc2, mrc_N2, dreso=bandwidth, density_map=mrc2.data)
         mrc_N2 = fastVEC(mrc2, mrc_N2, dreso=bandwidth)
-        print("--- %s seconds ---" % (time.time() - start_time))
+        # print("--- %s seconds ---" % (time.time() - start_time))
         print()
 
         # search map
@@ -272,8 +272,8 @@ if __name__ == "__main__":
         print("### Input Params Summary ###")
         print("Target MAP: ", objA)
         print("Search MAP: ", objB)
-        print("Target Secondary Structur Assignment: ", probA)
-        print("Search Secondary Structur Assignment: ", probB)
+        print("Target Secondary Structure Assignment: ", args.npa)
+        print("Search Secondary Structure Assignment: ", args.npb)
         print("Threshold of Target MAP: ", threshold1)
         print("Threshold of Search MAP: ", threshold2)
         print("Bandwidth of the Gaussian filter: ", bandwidth)
