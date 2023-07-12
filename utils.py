@@ -2,7 +2,6 @@ import copy
 
 import numba
 import numpy as np
-from scipy.interpolate import RegularGridInterpolator
 from scipy.spatial.transform import Rotation as R
 
 interp = None
@@ -323,7 +322,6 @@ def doFastVEC(src_xwidth, src_orig, src_dims, src_data,
 
 
 def new_rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, new_pos_grid):
-
     # set the dimension to be x dimension as all dimension are the same
     dim = orig_mrc_data.shape[0]
 
@@ -335,7 +333,7 @@ def new_rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, new_pos_grid):
 
     # reversely rotate the new position lists to get old positions
     old_pos = np.einsum("ij, kj->ki", mtx.T, new_pos) + cent
-    #old_pos = new_pos @ mtx + 0.5 * float(dim)
+    # old_pos = new_pos @ mtx + 0.5 * float(dim)
 
     # init new vec and dens array
     new_vec_array = np.zeros_like(orig_mrc_vec)
@@ -363,12 +361,13 @@ def new_rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, new_pos_grid):
     new_pos = (new_pos[in_bound_mask][non_zero_mask] + cent).astype(np.int32)
 
     # fill new density entries
-    new_data_array[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = orig_mrc_data[non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+    new_data_array[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = orig_mrc_data[
+        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
 
     # fetch and rotate the vectors
     non_zero_vecs = orig_mrc_vec[non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
 
-    #new_vec = non_zero_vecs @ mtx.T
+    # new_vec = non_zero_vecs @ mtx.T
     new_vec = np.einsum("ij, kj->ki", mtx, non_zero_vecs)
 
     # fill new vector entries
@@ -794,7 +793,6 @@ def save_pdb(origin,
 
 
 def new_rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx, new_pos_grid):
-
     dim = data.shape[0]
     cent = 0.5 * float(dim)
     new_pos = new_pos_grid - cent
@@ -832,16 +830,21 @@ def new_rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx, new_pos
     new_pos = (new_pos[in_bound_mask][non_zero_mask] + cent).astype(np.int32)
 
     # fill new density entries
-    new_data_array[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = data[non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
-    new_p1[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = prob_c1[non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
-    new_p2[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = prob_c2[non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
-    new_p3[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = prob_c3[non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
-    new_p4[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = prob_c4[non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+    new_data_array[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = data[
+        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+    new_p1[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = prob_c1[
+        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+    new_p2[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = prob_c2[
+        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+    new_p3[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = prob_c3[
+        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+    new_p4[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = prob_c4[
+        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
 
     # fetch and rotate the vectors
     non_zero_vecs = vec[non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
 
-    #new_vec = non_zero_vecs @ mtx.T
+    # new_vec = non_zero_vecs @ mtx.T
     new_vec = np.einsum("ij, kj->ki", mtx, non_zero_vecs)
 
     # fill new vector entries
@@ -940,8 +943,6 @@ def get_score(
     if trans[2] > 0.5 * dim:
         t[2] -= dim
 
-    # duplicate this part for all probability maps
-
     target_pos = np.array(np.meshgrid(np.arange(dim), np.arange(dim), np.arange(dim), )).T.reshape(-1, 3)
 
     search_pos = target_pos + t
@@ -965,14 +966,14 @@ def get_score(
     d1 = target_map_data[target_pos[:, 0], target_pos[:, 1], target_pos[:, 2]]
     d2 = search_map_data[search_pos[:, 0], search_pos[:, 1], search_pos[:, 2]]
 
-    d1 = np.where(d1 <= 0, 0.0, d1)
-    d2 = np.where(d2 <= 0, 0.0, d1)
+    d1 = np.where(d1 <= 0, 0.0, d1)  # trim negative values
+    d2 = np.where(d2 <= 0, 0.0, d1)  # trim negative values
 
-    pd1 = np.where(d1 <= 0, 0.0, d1 - ave1)
-    pd2 = np.where(d2 <= 0, 0.0, d2 - ave2)
+    pd1 = np.where(d1 <= 0, 0.0, d1 - ave1) # trim negative values
+    pd2 = np.where(d2 <= 0, 0.0, d2 - ave2) # trim negative values
 
-    cc = np.sum(np.multiply(d1, d2))
-    pcc = np.sum(np.multiply(pd1, pd2))
+    cc = np.sum(np.multiply(d1, d2))  # cross correlation
+    pcc = np.sum(np.multiply(pd1, pd2))  # Pearson cross correlation
 
     target_zero_mask = target_map_data[target_pos[:, 0], target_pos[:, 1], target_pos[:, 2]] == 0
     target_non_zero_mask = target_map_data[target_pos[:, 0], target_pos[:, 1], target_pos[:, 2]] > 0

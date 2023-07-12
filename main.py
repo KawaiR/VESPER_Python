@@ -83,6 +83,7 @@ if __name__ == "__main__":
     orig.add_argument('-E', type=bool, default=False, help='Evaluation mode of the current position def=false')
     orig.add_argument('-o', type=str, default=None, help='Output folder name')
     orig.add_argument('-I', type=str, default=None, help='Interpolation mode def=None')
+    orig.add_argument('-gpu', type=bool, default=False, help='Use GPU def=False')
 
     # secondary structure matching menu
     prob.add_argument('-a', type=str, required=True, help='MAP1.mrc (large)')
@@ -209,7 +210,7 @@ if __name__ == "__main__":
             modeVal = "Laplacian"
 
         search_map_fft(mrc_N1, mrc_N2, TopN=topN, ang=angle_spacing, mode=modeVal, is_eval_mode=evalMode,
-                       showPDB=showPDB, folder=folder)
+                       showPDB=showPDB, folder=folder, gpu=args.gpu)
 
 
     elif args.command == 'prob':
