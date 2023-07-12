@@ -1,6 +1,7 @@
 # coding: utf-8
 # import concurrent.futures
 import multiprocessing
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -197,7 +198,7 @@ def fft_get_score_trans_other(target_X, search_data, a, b, fft_object, ifft_obje
 
 
 def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", is_eval_mode=False, save_path=".",
-                   showPDB=False, folder=None, gpu=False):
+                   showPDB=False, folder=None, gpu=False, gpu_id=0):
     """The main search function for fining the best superimposition for the target and the query map.
 
     Args:
@@ -212,16 +213,6 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
     Returns:
         refined_list (list): a list of refined search results
     """
-    if gpu:
-        # set up torch cuda device
-        import torch
-        if not torch.cuda.is_available():
-            print("CUDA is not available. Please check your CUDA installation.")
-            exit(1)
-        else:
-            # use first available GPU
-            device = torch.device("cuda:0")
-
     if is_eval_mode:
         print("#For Evaluation Mode")
         print("#Please use the same coordinate system and map size for map1 and map2.")
@@ -236,6 +227,17 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
         _ = get_score(mrc_target, mrc_search.data, mrc_search.vec, [0, 0, 0])
 
         exit(0)
+
+    if gpu:
+        # set up torch cuda device
+        import torch
+        if not torch.cuda.is_available():
+            print("CUDA is not available. Please check your CUDA installation.")
+            exit(1)
+        else:
+            # set up torch cuda device
+            device = torch.device(f"cuda:{gpu_id}")
+
 
     # init rotation grid
     search_pos_grid = np.mgrid[0:mrc_search.data.shape[0], 0:mrc_search.data.shape[0],
@@ -459,10 +461,10 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
     # Write result to PDB files
     if showPDB:
         if folder is not None:
-            folder_path = Path.cwd() / folder
+            folder_path = folder
         else:
-            folder_path = Path.cwd() / ("VESPER_RUN_" + datetime.now().strftime('%m%d_%H%M%S'))
-        Path.mkdir(folder_path)
+            folder_path = Path.cwd() / "outputs" / ("VESPER_RUN_" + datetime.now().strftime('%m%d_%H%M%S'))
+        os.makedirs(folder_path, exist_ok=True)
         print("\n###Writing results to PDB files###")
     else:
         print()

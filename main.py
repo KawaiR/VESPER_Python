@@ -74,7 +74,7 @@ if __name__ == "__main__":
     orig.add_argument('-s', type=float, default=7.0, help='Sampling voxel spacing def=7.0')
     orig.add_argument('-A', type=float, default=30.0, help='Sampling angle spacing def=30.0')
     orig.add_argument('-N', type=int, default=10, help='Refine Top [int] models def=10')
-    orig.add_argument('-S', type=bool, default=False, help='Show topN models in PDB format def=false')
+    orig.add_argument('-S', action='store_true', default=False, help='Show topN models in PDB format def=false')
     orig.add_argument('-M', type=str, default='V', help='V: vector product mode (default)\n' +
                                                         'O: overlap mode\n' +
                                                         'C: Cross Correlation Coefficient Mode\n' +
@@ -83,7 +83,7 @@ if __name__ == "__main__":
     orig.add_argument('-E', type=bool, default=False, help='Evaluation mode of the current position def=false')
     orig.add_argument('-o', type=str, default=None, help='Output folder name')
     orig.add_argument('-I', type=str, default=None, help='Interpolation mode def=None')
-    orig.add_argument('-gpu', type=bool, default=False, help='Use GPU def=False')
+    orig.add_argument('-gpu', type=int, default=0, help='GPU number def=0')
 
     # secondary structure matching menu
     prob.add_argument('-a', type=str, required=True, help='MAP1.mrc (large)')
@@ -99,7 +99,7 @@ if __name__ == "__main__":
     prob.add_argument('-s', type=float, default=7.0, help='Sampling voxel spacing def=7.0')
     prob.add_argument('-A', type=float, default=30.0, help='Sampling angle spacing def=30.0')
     prob.add_argument('-N', type=int, default=10, help='Refine Top [int] models def=10')
-    prob.add_argument('-S', type=bool, default=False, help='Show topN models in PDB format def=false')
+    prob.add_argument('-S', action='store_true', default=False, help='Show topN models in PDB format def=false')
     prob.add_argument('-M', type=str, default='V', help='V: vector product mode (default)\n' +
                                                         'O: overlap mode\n' +
                                                         'C: Cross Correlation Coefficient Mode\n' +
@@ -209,8 +209,15 @@ if __name__ == "__main__":
         elif modeVal == 'L':
             modeVal = "Laplacian"
 
+        if args.gpu is not None:
+            use_gpu = True
+            gpu_id = args.gpu
+        else:
+            use_gpu = False
+            gpu_id = -1
+
         search_map_fft(mrc_N1, mrc_N2, TopN=topN, ang=angle_spacing, mode=modeVal, is_eval_mode=evalMode,
-                       showPDB=showPDB, folder=folder, gpu=args.gpu)
+                       showPDB=showPDB, folder=folder, gpu=use_gpu, gpu_id=gpu_id)
 
 
     elif args.command == 'prob':
