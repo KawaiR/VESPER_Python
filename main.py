@@ -5,6 +5,7 @@ from search import *
 from utils import mrc_set_vox_size, fastVEC
 import utils
 
+
 def alpha_is_zero(objA, objB, threshold1, threshold2, bandwidth, voxel_spacing, angle_spacing, topN, showPDB, modeVal,
                   evalMode):
     # construct mrc objects
@@ -83,7 +84,11 @@ if __name__ == "__main__":
     orig.add_argument('-E', type=bool, default=False, help='Evaluation mode of the current position def=false')
     orig.add_argument('-o', type=str, default=None, help='Output folder name')
     orig.add_argument('-I', type=str, default=None, help='Interpolation mode def=None')
-    orig.add_argument('-gpu', type=int, default=0, help='GPU number def=0')
+    orig.add_argument('-gpu', type=int, help='GPU ID to use for CUDA acceleration def=0')
+    orig.add_argument('-nodup', action='store_true', default=False, help='Remove duplicate models using heuristics '
+                                                                         'def=false')
+    orig.add_argument('-ldp', type=str, default=None, help='Path to the local dense point file def=None')
+    orig.add_argument('-ca', type=str, default=None, help='Path to the CA file def=None')
 
     # secondary structure matching menu
     prob.add_argument('-a', type=str, required=True, help='MAP1.mrc (large)')
@@ -113,8 +118,10 @@ if __name__ == "__main__":
     prob.add_argument('-pstd', type=float, help='Pre-computed standard deviation for probability map')
     prob.add_argument('-o', type=str, default=None, help='Output folder name')
     prob.add_argument('-I', type=str, default=None, help='Interpolation mode def=None')
-    prob.add_argument('-B', type=float, default=8.0, help='Bandwidth of the Gaussian filter for probability values def=8.0')
+    prob.add_argument('-B', type=float, default=8.0,
+                      help='Bandwidth of the Gaussian filter for probability values def=8.0')
     prob.add_argument('-R', type=float, default=0.0, help='Threshold for probability values def=0.0')
+    prob.add_argument('-gpu', type=int, help='GPU ID to use for CUDA acceleration def=0')
 
     args = parser.parse_args()
 
@@ -216,8 +223,13 @@ if __name__ == "__main__":
             use_gpu = False
             gpu_id = -1
 
-        search_map_fft(mrc_N1, mrc_N2, TopN=topN, ang=angle_spacing, mode=modeVal, is_eval_mode=evalMode,
-                       showPDB=showPDB, folder=folder, gpu=use_gpu, gpu_id=gpu_id)
+        search_map_fft(mrc_N1, mrc_N2,
+                       TopN=topN, ang=angle_spacing, mode=modeVal, is_eval_mode=evalMode,
+                       showPDB=showPDB, folder=folder,
+                       gpu=use_gpu, gpu_id=gpu_id,
+                       remove_dup=args.nodup,
+                       ldp_path=args.ldp,
+                       backbone_path=args.ca)
 
 
     elif args.command == 'prob':

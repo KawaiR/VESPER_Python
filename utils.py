@@ -1,8 +1,10 @@
 import copy
 
 import numba
+import numpy
 import numpy as np
-from scipy.spatial.transform import Rotation as R
+import torch
+from scipy.spatial.transform import Rotation as R, Rotation
 
 interp = None
 
@@ -1050,3 +1052,206 @@ def convert_trans(cen1, cen2, r, trans, xwidth2, dim):
     cen2 = r.apply(cen2)  # rotate the center
     new_trans = cen1 - (cen2 + trans * xwidth2)  # calculate new translation
     return new_trans
+
+
+def gpu_rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, new_pos_grid, device):
+    orig_mrc_data = torch.from_numpy(orig_mrc_data).to(device)
+    orig_mrc_vec = torch.from_numpy(orig_mrc_vec).to(device)
+    new_pos_grid = torch.from_numpy(new_pos_grid).to(device)
+
+    # set the dimension to be x dimension as all dimension are the same
+    dim = orig_mrc_data.shape[0]
+
+    # set the rotation center
+    cent = 0.5 * float(dim)
+
+    # get relative new positions from center
+    new_pos = new_pos_grid - cent
+
+    # reversely rotate the new position lists to get old positions
+    # old_pos = np.einsum("ij, kj->ki", mtx.T, new_pos) + cent
+    old_pos = new_pos @ mtx + 0.5 * float(dim)
+
+    # init new vec and dens array
+    # new_vec_array = np.zeros_like(orig_mrc_vec)
+    # new_data_array = np.zeros_like(orig_mrc_data)
+    new_vec_array = torch.zeros_like(orig_mrc_vec)
+    new_data_array = torch.zeros_like(orig_mrc_data)
+
+    in_bound_mask = (
+            (old_pos[:, 0] >= 0)
+            * (old_pos[:, 1] >= 0)
+            * (old_pos[:, 2] >= 0)
+            * (old_pos[:, 0] < dim)
+            * (old_pos[:, 1] < dim)
+            * (old_pos[:, 2] < dim)
+    )
+
+    # get valid old positions in bound
+    valid_old_pos = (old_pos[in_bound_mask]).long()
+
+    # get nonzero density positions in the map
+    non_zero_mask = orig_mrc_data[valid_old_pos[:, 0], valid_old_pos[:, 1], valid_old_pos[:, 2]] > 0
+
+    # apply nonzero mask to valid positions
+    non_zero_old_pos = valid_old_pos[non_zero_mask]
+
+    # get corresponding new positions
+    new_pos = (new_pos[in_bound_mask][non_zero_mask] + cent).long()
+
+    # fill new density entries
+    new_data_array[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = orig_mrc_data[
+        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+
+    # fetch and rotate the vectors
+    non_zero_vecs = orig_mrc_vec[non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+
+    new_vec = non_zero_vecs @ mtx.T
+    # new_vec = np.einsum("ij, kj->ki", mtx, non_zero_vecs)
+
+    # fill new vector entries
+    new_vec_array[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = new_vec
+
+    return new_vec_array, new_data_array
+
+
+def gpu_fft_search_best_dot(target_list, query_list):
+    """A better version of the fft_search_score_trans function that finds the best dot product for the target and
+    query list of vectors.
+
+    Args:
+        target_list (list(numpy.array)): FFT transformed result from target map (any dimensions)
+        query_list (list(numpy.array)): the input query map vector array (must has the same dimensions as target_list)
+        a, b, c (numpy.array): empty n-bytes aligned arrays for holding intermediate values in the transformation
+        fft_object (pyfftw.FFTW): preset FFT transformation plan
+        ifft_object (pyfftw.FFTW): preset inverse FFT transformation plan
+
+    Returns: dot_product_list: (list(numpy.array)): vector product result that can be fed into find_best_trans_list()
+    to find best translation
+    """
+
+    dot_product_list = []
+    for target_complex, query_real in zip(target_list, query_list):
+        query_complex = torch.fft.rfftn(query_real)
+        dot_complex = target_complex * query_complex
+        dot_real = torch.fft.irfftn(dot_complex, norm='ortho')
+        dot_product_list.append(dot_real.cpu().numpy())
+
+    return dot_product_list
+
+
+def gpu_fft_get_score_trans_other(target_X, search_data, mode, ave=None, device=None):
+    # GPU version of fft_get_score_trans_other, returns a numpy array.
+
+    x2 = copy.deepcopy(search_data.cpu().detach().numpy())
+
+    if mode == "Overlap":
+        x2 = np.where(x2 > 0, 1.0, 0.0)
+    elif mode == "CC":
+        x2 = np.where(x2 > 0, x2, 0.0)
+    elif mode == "PCC":
+        x2 = np.where(x2 > 0, x2 - ave, 0.0)
+    elif mode == "Laplacian":
+        x2 = laplacian_filter(x2)
+
+    x2 = torch.from_numpy(x2).to(device)
+    X2 = torch.fft.rfftn(x2)
+    dot_X = target_X * X2
+    real_X = torch.fft.irfftn(dot_X, norm='ortho')
+
+    return real_X.cpu().numpy()
+
+
+def gpu_rot_and_search_fft(data, vec, angle, target_list, mrc_target, device, mode="VecProduct", new_pos_grid=None):
+    rot_mtx = R.from_euler("xyz", angle, degrees=True).as_matrix().astype(np.float32)
+    rot_mtx = torch.from_numpy(rot_mtx).to(device)
+
+    new_vec, new_data = gpu_rot_mrc(data, vec, rot_mtx, new_pos_grid, device)
+
+    if mode == "VecProduct":
+        # compose query list
+        x2 = new_vec[..., 0]
+        y2 = new_vec[..., 1]
+        z2 = new_vec[..., 2]
+
+        query_list_vec = [x2, y2, z2]
+
+        # Search for best translation using FFT
+        fft_result_list_vec = gpu_fft_search_best_dot(target_list[:3], query_list_vec)
+
+        vec_score, vec_trans = find_best_trans_list(fft_result_list_vec)
+
+    # otherwise just use single dimension mode
+    else:
+        # GPU fft part, converted back to numpy array at the end
+        fft_result_vec = gpu_fft_get_score_trans_other(target_list[0],
+                                                       new_data,
+                                                       mode,
+                                                       mrc_target.ave,
+                                                       device)
+        vec_score, vec_trans = find_best_trans_list([fft_result_vec])
+        if mode == "CC":
+            vec_score = vec_score / (mrc_target.std ** 2)
+        if mode == "PCC":
+            vec_score = vec_score / (mrc_target.std_norm_ave ** 2)
+
+    return vec_score, vec_trans, new_vec.cpu().numpy(), new_data.cpu().numpy()
+
+
+def find_best_trans_list(input_list):
+    """find the best translation based on list of FFT transformation results
+
+    Args:
+        input_list (numpy.array): FFT result list
+
+    Returns:
+        best (float): the maximum score found
+        trans (list(int)): the best translation associated with the maximum score
+    """
+
+    sum_arr = np.zeros_like(input_list[0])
+    for arr in input_list:
+        sum_arr = sum_arr + arr
+    best = np.amax(sum_arr)
+    trans = np.unravel_index(sum_arr.argmax(), sum_arr.shape)
+
+    return best, trans
+
+
+def format_score_result(result, ave, std):
+    return (f"Rotation {result['angle']}, DOT Score: {result['vec_score']}, DOT Trans: {result['vec_trans']}, " +
+            f"Prob Score: {result['prob_score']}, Prob Trans: {result['prob_trans']}, " +
+            f"MIX Score: {result['mixed_score']}, MIX Trans: {result['mixed_trans']}, " +
+            f"Normalized Mix Score: {(result['mixed_score'] - ave) / std}")
+
+
+def find_best_trans_mixed(vec_fft_results, prob_fft_results, alpha, vstd, vave, pstd, pave):
+    """
+    It takes the sum of the two arrays, normalizes them, mixes them, and then finds the best translation
+    :param vec_fft_results: the results of the FFT on the vectorized image
+    :param prob_fft_results: the FFT of the probability map
+    :param alpha: the weight of the probability map
+    :param vstd: standard deviation of the vector fft results
+    :param vave: the mean of the vector fft results
+    :param pstd: standard deviation of the secondary structure matching score fft results
+    :param pave: the mean of the secondary structure matching score fft results
+    :return: The best score and the translation that produced it.
+    """
+    sum_arr_v = vec_fft_results[0] + vec_fft_results[1] + vec_fft_results[2]
+
+    # sum_arr_v = sum(vec_fft_results)
+    # sum_arr_p = sum(prob_fft_results)
+    sum_arr_p = prob_fft_results[0] + prob_fft_results[1] + prob_fft_results[2]
+
+    # z-score normalization
+    sum_arr_v = (sum_arr_v - vave) / vstd
+    sum_arr_p = (sum_arr_p - pave) / pstd
+
+    # mix the two arrays
+    sum_arr_mixed = (1 - alpha) * sum_arr_v + alpha * sum_arr_p
+
+    # find the best translation
+    best_score = sum_arr_mixed.max()
+    best_trans = np.unravel_index(sum_arr_mixed.argmax(), sum_arr_mixed.shape)
+
+    return best_score, best_trans
