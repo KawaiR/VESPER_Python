@@ -70,6 +70,8 @@ Usage: main.py orig [-h] -a A -b B [-t T] [-T T] [-g G] [-s S] [-A A] [-N N] [-S
               Mode P: Pearson Correlation Coefficient
               Mode L: Laplacian Filtering Mode
   -E E        Evaluation mode of the current position def=false
+  -gpu gpuid  GPU ID to use, if not present, use CPU
+  -nodup      Remove duplicate positions using heuristics
 ```
 (2) Mode 2: Probability maps generated for each secondary structure in both maps used for alignment must be generated using Emap2sec+ first and then converted into .npy format using the interpolation script before running this mode. (With Secondary structure matching.)
 ```
