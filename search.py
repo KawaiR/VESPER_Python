@@ -178,7 +178,7 @@ def fft_get_score_trans_other(target_X, search_data, a, b, fft_object, ifft_obje
 
 def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", is_eval_mode=False, save_path=".",
                    showPDB=False, folder=None, gpu=False, gpu_id=-1, remove_dup=False, ldp_path=None,
-                   backbone_path=None):
+                   backbone_path=None, input_pdb=None):
     """The main search function for fining the best superimposition for the target and the query map.
 
     Args:
@@ -554,6 +554,9 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
         else:
             folder_path = Path.cwd() / "outputs" / ("VESPER_RUN_" + datetime.now().strftime('%m%d_%H%M%S'))
         os.makedirs(folder_path, exist_ok=True)
+        os.makedirs(folder_path / "VEC", exist_ok=True)
+        if input_pdb:
+            os.makedirs(folder_path / "PDB", exist_ok=True)
         print("\n###Writing results to PDB files###")
     else:
         print()
@@ -598,8 +601,14 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
                      mrc_search.xwidth,
                      result_mrc["vec_trans"],
                      result_mrc["angle"],
-                     folder_path,
+                     folder_path / "VEC",
                      i)
+        if input_pdb:
+            rot_mtx = R.from_euler('xyz', result_mrc["angle"], degrees=True).as_matrix()
+            angle_str = f"rx{int(result_mrc['angle'][0])}_ry{int(result_mrc['angle'][1])}_rz{int(result_mrc['angle'][2])}"
+            trans_str = f"tx{result_mrc['vec_trans'][0]}_ty{result_mrc['vec_trans'][1]}_tz{result_mrc['vec_trans'][2]}"
+            file_name = f"#{i}_{angle_str}_{trans_str}.pdb"
+            save_rotated_pdb(input_pdb, rot_mtx, result_mrc["vec_trans"], str(folder_path / "PDB" / file_name))
 
     return refined_list
 

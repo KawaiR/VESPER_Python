@@ -6,6 +6,9 @@ import numpy as np
 import torch
 from scipy.spatial.transform import Rotation as R, Rotation
 
+from Bio.PDB import PDBParser, MMCIFParser
+from Bio.PDB.PDBIO import PDBIO
+
 interp = None
 
 
@@ -971,8 +974,8 @@ def get_score(
     d1 = np.where(d1 <= 0, 0.0, d1)  # trim negative values
     d2 = np.where(d2 <= 0, 0.0, d1)  # trim negative values
 
-    pd1 = np.where(d1 <= 0, 0.0, d1 - ave1) # trim negative values
-    pd2 = np.where(d2 <= 0, 0.0, d2 - ave2) # trim negative values
+    pd1 = np.where(d1 <= 0, 0.0, d1 - ave1)  # trim negative values
+    pd2 = np.where(d2 <= 0, 0.0, d2 - ave2)  # trim negative values
 
     cc = np.sum(np.multiply(d1, d2))  # cross correlation
     pcc = np.sum(np.multiply(pd1, pd2))  # Pearson cross correlation
@@ -1255,3 +1258,21 @@ def find_best_trans_mixed(vec_fft_results, prob_fft_results, alpha, vstd, vave, 
     best_trans = np.unravel_index(sum_arr_mixed.argmax(), sum_arr_mixed.shape)
 
     return best_score, best_trans
+
+
+def save_rotated_pdb(input_pdb, rot_mtx, trans_vec, save_path):
+    if input_pdb.split(".")[-1] == "pdb":
+        parser = PDBParser(QUIET=True)
+    elif input_pdb.split(".")[-1] == "cif":
+        parser = MMCIFParser(QUIET=True)
+    else:
+        print("Input file is not pdb or cif format.")
+        return
+
+    structure = parser.get_structure("search", input_pdb)
+    structure.transform(rot_mtx, trans_vec)
+
+    pdbio = PDBIO()
+
+    pdbio.set_structure(structure)
+    pdbio.save(save_path)

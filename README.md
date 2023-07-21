@@ -55,23 +55,24 @@ Usage: interpolation.py graph [-h] -f F -s S -m M
 Usage: main.py orig [-h] -a A -b B [-t T] [-T T] [-g G] [-s S] [-A A] [-N N] [-S S] [-M M] [-E E]
 ---Options---
 -h, --help  show this help message and exit
-  -a A        MAP1.mrc (large)
-  -b B        MAP2.mrc (small)
-  -t T        Threshold of density map1
-  -T T        Threshold of density map2
-  -g G        Bandwidth of the Gaussian filter def=16.0, sigma = 0.5*[value entered]
-  -s S        Sampling voxel spacing def=7.0
-  -A A        Sampling angle spacing def=30.0
-  -N N        Refine Top [int] models def=10
-  -S S        Show topN models in PDB format def=false
-  -M M        V: vector product mode (default)
-              O: overlap mode
-              C: Cross Correlation Coefficient
-              Mode P: Pearson Correlation Coefficient
-              Mode L: Laplacian Filtering Mode
-  -E E        Evaluation mode of the current position def=false
-  -gpu gpuid  GPU ID to use, if not present, use CPU
-  -nodup      Remove duplicate positions using heuristics
+  -a {MAP1_path}            MAP1.mrc (large)
+  -b {MAP2_path}            MAP2.mrc (small)
+  -t {MAP1_Thres}           Threshold of density map1
+  -T {MAP2_Thres}           Threshold of density map2
+  -g {G}                    Bandwidth of the Gaussian filter sigma = 0.5 * G, def=16.0
+  -s {Voxel Spacing}        Sampling voxel spacing def=7.0
+  -A {Angle Spacing}        Sampling angle spacing def=30.0
+  -N {Number}               Refine Top [int] models def=10
+  -S                        Show topN models vector representation in PDB format, def=false
+  -M {Mode}                 V: vector product mode (Default)
+                            O: overlap mode
+                            C: Cross Correlation Coefficient
+                            P: Pearson Correlation Coefficient
+                            L: Laplacian Filtering Mode
+  -E                        Evaluation mode of the current position, def=false
+  -gpu {GPUID}              GPU ID to use, if not present, use CPU
+  -nodup                    Remove duplicate positions using heuristics (Optional)
+  -pdbin                    Input PDB file for transformation (Optional)
 ```
 (2) Mode 2: Probability maps generated for each secondary structure in both maps used for alignment must be generated using Emap2sec+ first and then converted into .npy format using the interpolation script before running this mode. (With Secondary structure matching.)
 ```

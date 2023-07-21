@@ -1,5 +1,5 @@
 import argparse
-import time
+import os
 
 from search import *
 from utils import mrc_set_vox_size, fastVEC
@@ -89,6 +89,7 @@ if __name__ == "__main__":
                                                                          'def=false')
     orig.add_argument('-ldp', type=str, default=None, help='Path to the local dense point file def=None')
     orig.add_argument('-ca', type=str, default=None, help='Path to the CA file def=None')
+    orig.add_argument('-pdbin', type=str, default=None, help='Input PDB file to be transformed def=None')
 
     # secondary structure matching menu
     prob.add_argument('-a', type=str, required=True, help='MAP1.mrc (large)')
@@ -124,6 +125,13 @@ if __name__ == "__main__":
     prob.add_argument('-gpu', type=int, help='GPU ID to use for CUDA acceleration def=0')
 
     args = parser.parse_args()
+
+    if not os.path.exists(args.a):
+        print("Target map not found, please check -a option")
+        exit(-1)
+    if not os.path.exists(args.a):
+        print("Query map not found, please check -b option")
+        exit(-1)
 
     if args.command == 'orig':
         # output folder
@@ -223,13 +231,18 @@ if __name__ == "__main__":
             use_gpu = False
             gpu_id = -1
 
+        if not os.path.exists(args.pdbin):
+            print("Input PDB file does not exist")
+            args.pdbin = None
+
         search_map_fft(mrc_N1, mrc_N2,
                        TopN=topN, ang=angle_spacing, mode=modeVal, is_eval_mode=evalMode,
                        showPDB=showPDB, folder=folder,
                        gpu=use_gpu, gpu_id=gpu_id,
                        remove_dup=args.nodup,
                        ldp_path=args.ldp,
-                       backbone_path=args.ca)
+                       backbone_path=args.ca,
+                       input_pdb=args.pdbin)
 
 
     elif args.command == 'prob':
