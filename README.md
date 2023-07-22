@@ -14,14 +14,21 @@ Data: https://drive.google.com/drive/folders/1os3i7YmlMew3dmfovlzRU4WVuJ7nKzPX?u
 * pyFFTW
 * scipy
 
-## Software Compatibility:
-To ensure all versions are compatible, run:
+## Requirements:
+Please use Python 3.9 or higher.
+
+To install the requirements run:
 ```
 pip3 install -r requirements.txt --user
 ```
 or
 ```
 pip install -r requirements.txt --user
+```
+
+## Install PyTorch for CUDA acceleration:
+```
+pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
 ```
 
 ## VESPER_Python protocol

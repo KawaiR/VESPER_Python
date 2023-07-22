@@ -231,7 +231,7 @@ if __name__ == "__main__":
             use_gpu = False
             gpu_id = -1
 
-        if not os.path.exists(args.pdbin):
+        if not args.pdbin or not os.path.exists(args.pdbin):
             print("Input PDB file does not exist")
             args.pdbin = None
 
