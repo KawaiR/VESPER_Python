@@ -612,7 +612,7 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
                                        result_mrc["vec_trans"],
                                        mrc_search.xwidth,
                                        mrc_search.xdim)
-            trans_str = f"tx{true_trans[0]}_ty{true_trans[1]}_tz{true_trans[2]}"
+            trans_str = f"tx{true_trans[0]:.3f}_ty{true_trans[1]:.3f}_tz{true_trans[2]:.3f}"
             file_name = f"#{i}_{angle_str}_{trans_str}.pdb"
             save_rotated_pdb(input_pdb, rot_mtx, true_trans, str(folder_path / "PDB" / file_name))
 
