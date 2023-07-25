@@ -55,7 +55,7 @@ class MrcObj:
         self.dsum = None  # total density value
         self.Nact = None  # non-zero density voxel count
         self.ave = None  # average density value
-        self.std_norm_ave = None  # L2 norm nomalized with average density value
+        self.std_norm_ave = None  # L2 norm normalized with average density value
         self.std = None  # unnormalize L2 norm
 
 
@@ -208,6 +208,7 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
 
         exit(0)
 
+    device = None
     if gpu:
         # set up torch cuda device
         import torch
@@ -216,6 +217,7 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
             exit(1)
         else:
             # set up torch cuda device
+            os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
             device = torch.device(f"cuda:{gpu_id}")
             print(f"Using GPU {gpu_id} for CUDA acceleration.")
     else:
@@ -259,10 +261,10 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
         Z1 = np.conj(Z1)
         target_list = [X1, Y1, Z1]
 
-    if gpu:
+    if device:
         # convert to tensor on GPU
         import torch  # lazy import
-        target_list = [torch.from_numpy(target_list[i]).cuda() for i in range(len(target_list))]
+        target_list = [torch.from_numpy(target_list[i]).to(device) for i in range(len(target_list))]
     else:
         # fftw plans initialization
         a = pyfftw.empty_aligned(mrc_search.vec[..., 0].shape, dtype="float32")
