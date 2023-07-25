@@ -1043,6 +1043,7 @@ def calc_angle_comb(ang_interval):
 
 
 def convert_trans(cen1, cen2, r, trans, xwidth2, dim):
+
     trans = np.array(trans)
 
     if trans[0] > 0.5 * dim:
@@ -1266,7 +1267,7 @@ def save_rotated_pdb(input_pdb, rot_mtx, trans_vec, save_path):
     elif input_pdb.split(".")[-1] == "cif":
         parser = MMCIFParser(QUIET=True)
     else:
-        print("Input file is not pdb or cif format.")
+        print("Input file is not pdb or cif format. No transform PDB will be generated.")
         return
 
     structure = parser.get_structure("search", input_pdb)

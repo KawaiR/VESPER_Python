@@ -604,11 +604,17 @@ def search_map_fft(mrc_target, mrc_search, TopN=10, ang=30, mode="VecProduct", i
                      folder_path / "VEC",
                      i)
         if input_pdb:
-            rot_mtx = R.from_euler('xyz', result_mrc["angle"], degrees=True).as_matrix()
+            rot_mtx = R.from_euler('xyz', result_mrc["angle"], degrees=True).inv().as_matrix()
             angle_str = f"rx{int(result_mrc['angle'][0])}_ry{int(result_mrc['angle'][1])}_rz{int(result_mrc['angle'][2])}"
-            trans_str = f"tx{result_mrc['vec_trans'][0]}_ty{result_mrc['vec_trans'][1]}_tz{result_mrc['vec_trans'][2]}"
+            true_trans = convert_trans(mrc_target.cent,
+                                       mrc_search.cent,
+                                       r,
+                                       result_mrc["vec_trans"],
+                                       mrc_search.xwidth,
+                                       mrc_search.xdim)
+            trans_str = f"tx{true_trans[0]}_ty{true_trans[1]}_tz{true_trans[2]}"
             file_name = f"#{i}_{angle_str}_{trans_str}.pdb"
-            save_rotated_pdb(input_pdb, rot_mtx, result_mrc["vec_trans"], str(folder_path / "PDB" / file_name))
+            save_rotated_pdb(input_pdb, rot_mtx, true_trans, str(folder_path / "PDB" / file_name))
 
     return refined_list
 
