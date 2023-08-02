@@ -1,10 +1,9 @@
 import copy
 
 import numba
-import numpy
 import numpy as np
 import torch
-from scipy.spatial.transform import Rotation as R, Rotation
+from scipy.spatial.transform import Rotation as R
 
 from Bio.PDB import PDBParser, MMCIFParser
 from Bio.PDB.PDBIO import PDBIO
@@ -55,19 +54,19 @@ def mrc_set_vox_size(mrc, thr=0.00, voxel_size=7.0):
     # new_xdim = pyfftw.next_fast_len(int(tmp_size))
 
     a = 2
-    while (1):
+    while 1:
         if a > tmp_size:
             break
         a *= 2
 
     b = 3
-    while (1):
+    while 1:
         if b > tmp_size:
             break
         b *= 2
 
     b = 9
-    while (1):
+    while 1:
         if b > tmp_size:
             break
         b *= 2
@@ -88,12 +87,20 @@ def mrc_set_vox_size(mrc, thr=0.00, voxel_size=7.0):
     mrc_new.cent = new_cent
     mrc_new.xwidth = mrc_new.ywidth = mrc_new.zwidth = voxel_size
 
-    print("Nvox= " + str(mrc_new.xdim) + ", " + str(mrc_new.ydim) + ", " +
-          str(mrc_new.zdim))
-    print("cent= " + str(new_cent[0]) + ", " + str(new_cent[1]) + ", " +
-          str(new_cent[2]))
-    print("ori= " + str(new_orig[0]) + ", " + str(new_orig[1]) + ", " +
-          str(new_orig[2]))
+    print(
+        "Nvox= "
+        + str(mrc_new.xdim)
+        + ", "
+        + str(mrc_new.ydim)
+        + ", "
+        + str(mrc_new.zdim)
+    )
+    print(
+        "cent= " + str(new_cent[0]) + ", " + str(new_cent[1]) + ", " + str(new_cent[2])
+    )
+    print(
+        "ori= " + str(new_orig[0]) + ", " + str(new_orig[1]) + ", " + str(new_orig[2])
+    )
 
     return mrc, mrc_new
 
@@ -125,6 +132,7 @@ def mrc_set_vox_size(mrc, thr=0.00, voxel_size=7.0):
 #
 #     return dtotal, v
 
+
 @numba.jit(nopython=True)
 def calc_prob(stp, endp, pos, density_data, prob_data, fsiv):
     """Calculate the density and vector in resized map using Gaussian interpolation in original MRC density map"""
@@ -133,13 +141,13 @@ def calc_prob(stp, endp, pos, density_data, prob_data, fsiv):
 
     for xp in range(stp[0], endp[0]):
         rx = float(xp) - pos[0]
-        rx = rx ** 2
+        rx = rx**2
         for yp in range(stp[1], endp[1]):
             ry = float(yp) - pos[1]
-            ry = ry ** 2
+            ry = ry**2
             for zp in range(stp[2], endp[2]):
                 rz = float(zp) - pos[2]
-                rz = rz ** 2
+                rz = rz**2
                 d2 = rx + ry + rz
                 # v = density_data[xp][yp][zp] * prob_data[xp][yp][zp] *  np.exp(-1.5 * d2 * fsiv)
                 v = prob_data[xp][yp][zp] * np.exp(-1.5 * d2 * fsiv)
@@ -159,13 +167,13 @@ def calc(stp, endp, pos, data, fsiv):
 
     for xp in range(stp[0], endp[0]):
         rx = float(xp) - pos[0]
-        rx = rx ** 2
+        rx = rx**2
         for yp in range(stp[1], endp[1]):
             ry = float(yp) - pos[1]
-            ry = ry ** 2
+            ry = ry**2
             for zp in range(stp[2], endp[2]):
                 rz = float(zp) - pos[2]
-                rz = rz ** 2
+                rz = rz**2
                 d2 = rx + ry + rz
                 v = data[xp][yp][zp] * np.exp(-1.5 * d2 * fsiv)
                 dtotal += v
@@ -187,8 +195,8 @@ def calc_avg(stp, endp, prob_data, mrc_data):
     :param mrc_data: the density map
     :return: The average probability of the selected region.
     """
-    selected = prob_data[stp[0]:endp[0], stp[1]:endp[1], stp[2]:endp[2]]
-    weights = mrc_data[stp[0]:endp[0], stp[1]:endp[1], stp[2]:endp[2]]
+    selected = prob_data[stp[0] : endp[0], stp[1] : endp[1], stp[2] : endp[2]]
+    weights = mrc_data[stp[0] : endp[0], stp[1] : endp[1], stp[2] : endp[2]]
     # return 0 if no density in the selected region
     if np.sum(weights) == 0:
         return 0.0
@@ -202,9 +210,19 @@ def fastVEC(src, dest, dreso=16.0, density_map=None):
 
     if np.sum(src.data) != 0:
 
-        dest_data, dest_vec = doFastVEC(src.xwidth, src.orig, src_dims, src.data,
-                                        dest.xwidth, dest.orig, dest_dims, dest.data, dest.vec,
-                                        dreso, density_map=density_map)
+        dest_data, dest_vec = doFastVEC(
+            src.xwidth,
+            src.orig,
+            src_dims,
+            src.data,
+            dest.xwidth,
+            dest.orig,
+            dest_dims,
+            dest.data,
+            dest.vec,
+            dreso,
+            density_map=density_map,
+        )
 
         # calculate map statistics
         dsum = np.sum(dest_data)
@@ -212,8 +230,6 @@ def fastVEC(src, dest, dreso=16.0, density_map=None):
         ave = np.mean(dest_data[dest_data > 0])
         std = np.linalg.norm(dest_data[dest_data > 0])
         std_norm_ave = np.linalg.norm(dest_data[dest_data > 0] - ave)
-
-
 
     else:
         dsum = 0
@@ -224,11 +240,11 @@ def fastVEC(src, dest, dreso=16.0, density_map=None):
         dest_data = np.zeros(dest_dims)
         dest_vec = np.zeros((dest_dims[0], dest_dims[1], dest_dims[2], 3))
 
-    print("#MAP SUM={sum} COUNT={cnt} AVE={ave} STD={std} STD_norm={std_norm}".format(sum=dsum,
-                                                                                      cnt=Nact,
-                                                                                      ave=ave,
-                                                                                      std=std,
-                                                                                      std_norm=std_norm_ave))
+    print(
+        "#MAP SUM={sum} COUNT={cnt} AVE={ave} STD={std} STD_norm={std_norm}".format(
+            sum=dsum, cnt=Nact, ave=ave, std=std, std_norm=std_norm_ave
+        )
+    )
 
     # update the dest object with the new data and vectors
     dest.data = dest_data
@@ -243,12 +259,22 @@ def fastVEC(src, dest, dreso=16.0, density_map=None):
 
 
 @numba.jit(nopython=True)
-def doFastVEC(src_xwidth, src_orig, src_dims, src_data,
-              dest_xwidth, dest_orig, dest_dims, dest_data, dest_vec,
-              dreso, density_map):
+def doFastVEC(
+    src_xwidth,
+    src_orig,
+    src_dims,
+    src_data,
+    dest_xwidth,
+    dest_orig,
+    dest_dims,
+    dest_data,
+    dest_vec,
+    dreso,
+    density_map,
+):
     gstep = src_xwidth
     fs = (dreso / gstep) * 0.5
-    fs = fs ** 2
+    fs = fs**2
     fsiv = 1.0 / fs
     fmaxd = (dreso / gstep) * 2.0
     print("#maxd=", fmaxd)
@@ -264,12 +290,12 @@ def doFastVEC(src_xwidth, src_orig, src_dims, src_data,
                 # check density
 
                 if (
-                        pos[0] < 0
-                        or pos[1] < 0
-                        or pos[2] < 0
-                        or pos[0] >= src_dims[0]
-                        or pos[1] >= src_dims[1]
-                        or pos[2] >= src_dims[2]
+                    pos[0] < 0
+                    or pos[1] < 0
+                    or pos[2] < 0
+                    or pos[0] >= src_dims[0]
+                    or pos[1] >= src_dims[1]
+                    or pos[2] >= src_dims[2]
                 ):
                     continue
 
@@ -299,7 +325,9 @@ def doFastVEC(src_xwidth, src_orig, src_dims, src_data,
 
                 # compute the total density
                 if density_map is not None:
-                    dtotal, pos2 = calc_prob(stp, endp, pos, density_map, src_data, fsiv)
+                    dtotal, pos2 = calc_prob(
+                        stp, endp, pos, density_map, src_data, fsiv
+                    )
                 else:
                     dtotal, pos2 = calc(stp, endp, pos, src_data, fsiv)
 
@@ -345,19 +373,21 @@ def new_rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, new_pos_grid):
     new_data_array = np.zeros_like(orig_mrc_data)
 
     in_bound_mask = (
-            (old_pos[:, 0] >= 0)
-            * (old_pos[:, 1] >= 0)
-            * (old_pos[:, 2] >= 0)
-            * (old_pos[:, 0] < dim)
-            * (old_pos[:, 1] < dim)
-            * (old_pos[:, 2] < dim)
+        (old_pos[:, 0] >= 0)
+        * (old_pos[:, 1] >= 0)
+        * (old_pos[:, 2] >= 0)
+        * (old_pos[:, 0] < dim)
+        * (old_pos[:, 1] < dim)
+        * (old_pos[:, 2] < dim)
     )
 
     # get valid old positions in bound
     valid_old_pos = (old_pos[in_bound_mask]).astype(np.int32)
 
     # get nonzero density positions in the map
-    non_zero_mask = orig_mrc_data[valid_old_pos[:, 0], valid_old_pos[:, 1], valid_old_pos[:, 2]] > 0
+    non_zero_mask = (
+        orig_mrc_data[valid_old_pos[:, 0], valid_old_pos[:, 1], valid_old_pos[:, 2]] > 0
+    )
 
     # apply nonzero mask to valid positions
     non_zero_old_pos = valid_old_pos[non_zero_mask]
@@ -367,10 +397,13 @@ def new_rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, new_pos_grid):
 
     # fill new density entries
     new_data_array[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = orig_mrc_data[
-        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]
+    ]
 
     # fetch and rotate the vectors
-    non_zero_vecs = orig_mrc_vec[non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+    non_zero_vecs = orig_mrc_vec[
+        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]
+    ]
 
     # new_vec = non_zero_vecs @ mtx.T
     new_vec = np.einsum("ij, kj->ki", mtx, non_zero_vecs)
@@ -386,7 +419,7 @@ def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx):
     Args:
         orig_mrc_data (numpy.array): the data array to be rotated
         orig_mrc_vec (numpy.array): the vector array to be rotated
-        angle (float, float, float): the angle of rotation in degrees
+        mtx (numpy.array): the rotation matrix to be used
     Returns:
         new_vec_array (numpy.array): rotated vector array
         new_data_array (numpy.array): rotated data array
@@ -396,7 +429,13 @@ def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx):
     dim = orig_mrc_data.shape[0]
 
     # create array for the positions after rotation
-    new_pos = np.array(np.meshgrid(np.arange(dim), np.arange(dim), np.arange(dim), )).T.reshape(-1, 3)
+    new_pos = np.array(
+        np.meshgrid(
+            np.arange(dim),
+            np.arange(dim),
+            np.arange(dim),
+        )
+    ).T.reshape(-1, 3)
 
     # set the rotation center
     cent = 0.5 * float(dim)
@@ -412,12 +451,12 @@ def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx):
 
     # filter out the positions that are out of the original array
     in_bound_mask = (
-            (combined_arr[:, 0] >= 0)
-            * (combined_arr[:, 1] >= 0)
-            * (combined_arr[:, 2] >= 0)
-            * (combined_arr[:, 0] < dim)
-            * (combined_arr[:, 1] < dim)
-            * (combined_arr[:, 2] < dim)
+        (combined_arr[:, 0] >= 0)
+        * (combined_arr[:, 1] >= 0)
+        * (combined_arr[:, 2] >= 0)
+        * (combined_arr[:, 0] < dim)
+        * (combined_arr[:, 1] < dim)
+        * (combined_arr[:, 2] < dim)
     )
 
     # init new vec and dens array
@@ -444,8 +483,12 @@ def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx):
     # non_zero_rot_list = old_pos[dens_mask].astype(np.int32)
 
     # get the non-zero vec and dens values
-    non_zero_vec = orig_mrc_vec[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
-    non_zero_dens = orig_mrc_data[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
+    non_zero_vec = orig_mrc_vec[
+        non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]
+    ]
+    non_zero_dens = orig_mrc_data[
+        non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]
+    ]
 
     # rotate the vectors
     new_vec = np.einsum("ij, kj->ki", mtx, non_zero_vec)
@@ -456,7 +499,9 @@ def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx):
 
     # fill in the values to new vec and dens array
     new_vec_array[new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]] = new_vec
-    new_data_array[new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]] = non_zero_dens
+    new_data_array[
+        new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]
+    ] = non_zero_dens
 
     return new_vec_array, new_data_array
 
@@ -595,32 +640,34 @@ def laplacian_filter(arr):
             for z in range(zdim):
                 if arr[x][y][z] > 0:
                     new_arr[x][y][z] = -6.0 * arr[x][y][z]
-                    if (x + 1 < xdim):
+                    if x + 1 < xdim:
                         new_arr[x][y][z] += arr[x + 1][y][z]
-                    if (x - 1 >= 0):
+                    if x - 1 >= 0:
                         new_arr[x][y][z] += arr[x - 1][y][z]
-                    if (y + 1 < ydim):
+                    if y + 1 < ydim:
                         new_arr[x][y][z] += arr[x][y + 1][z]
-                    if (y - 1 >= 0):
+                    if y - 1 >= 0:
                         new_arr[x][y][z] += arr[x][y - 1][z]
-                    if (z + 1 < zdim):
+                    if z + 1 < zdim:
                         new_arr[x][y][z] += arr[x][y][z + 1]
-                    if (z - 1 >= 0):
+                    if z - 1 >= 0:
                         new_arr[x][y][z] += arr[x][y][z - 1]
     return new_arr
 
 
-def save_pdb(origin,
-             sampled_mrc_vec,
-             sampled_mrc_data,
-             score_arr,
-             score,
-             sample_width,
-             trans,
-             angle,
-             folder_path,
-             rank,
-             cluster=False):
+def save_pdb(
+    origin,
+    sampled_mrc_vec,
+    sampled_mrc_data,
+    score_arr,
+    score,
+    sample_width,
+    trans,
+    angle,
+    folder_path,
+    rank,
+    cluster=False,
+):
     dim = sampled_mrc_data.shape[0]
 
     if cluster:
@@ -814,19 +861,21 @@ def new_rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx, new_pos
     new_p4 = np.zeros_like(prob_c4)
 
     in_bound_mask = (
-            (old_pos[:, 0] >= 0)
-            * (old_pos[:, 1] >= 0)
-            * (old_pos[:, 2] >= 0)
-            * (old_pos[:, 0] < dim)
-            * (old_pos[:, 1] < dim)
-            * (old_pos[:, 2] < dim)
+        (old_pos[:, 0] >= 0)
+        * (old_pos[:, 1] >= 0)
+        * (old_pos[:, 2] >= 0)
+        * (old_pos[:, 0] < dim)
+        * (old_pos[:, 1] < dim)
+        * (old_pos[:, 2] < dim)
     )
 
     # get valid old positions in bound
     valid_old_pos = (old_pos[in_bound_mask]).astype(np.int32)
 
     # get nonzero density positions in the map
-    non_zero_mask = data[valid_old_pos[:, 0], valid_old_pos[:, 1], valid_old_pos[:, 2]] > 0
+    non_zero_mask = (
+        data[valid_old_pos[:, 0], valid_old_pos[:, 1], valid_old_pos[:, 2]] > 0
+    )
 
     # apply nonzero mask to valid positions
     non_zero_old_pos = valid_old_pos[non_zero_mask]
@@ -836,18 +885,25 @@ def new_rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx, new_pos
 
     # fill new density entries
     new_data_array[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = data[
-        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]
+    ]
     new_p1[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = prob_c1[
-        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]
+    ]
     new_p2[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = prob_c2[
-        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]
+    ]
     new_p3[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = prob_c3[
-        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]
+    ]
     new_p4[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = prob_c4[
-        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]
+    ]
 
     # fetch and rotate the vectors
-    non_zero_vecs = vec[non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+    non_zero_vecs = vec[
+        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]
+    ]
 
     # new_vec = non_zero_vecs @ mtx.T
     new_vec = np.einsum("ij, kj->ki", mtx, non_zero_vecs)
@@ -861,7 +917,13 @@ def new_rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx, new_pos
 def rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx):
     dim = data.shape[0]
 
-    new_pos = np.array(np.meshgrid(np.arange(dim), np.arange(dim), np.arange(dim), )).T.reshape(-1, 3)
+    new_pos = np.array(
+        np.meshgrid(
+            np.arange(dim),
+            np.arange(dim),
+            np.arange(dim),
+        )
+    ).T.reshape(-1, 3)
 
     cent = 0.5 * float(dim)
     new_pos = new_pos - cent
@@ -871,12 +933,12 @@ def rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx):
     combined_arr = np.hstack((old_pos, new_pos))
 
     in_bound_mask = (
-            (old_pos[:, 0] >= 0)
-            * (old_pos[:, 1] >= 0)
-            * (old_pos[:, 2] >= 0)
-            * (old_pos[:, 0] < dim)
-            * (old_pos[:, 1] < dim)
-            * (old_pos[:, 2] < dim)
+        (old_pos[:, 0] >= 0)
+        * (old_pos[:, 1] >= 0)
+        * (old_pos[:, 2] >= 0)
+        * (old_pos[:, 0] < dim)
+        * (old_pos[:, 1] < dim)
+        * (old_pos[:, 2] < dim)
     )
 
     # create new array for density, vector and probability
@@ -898,19 +960,35 @@ def rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx):
     non_zero_rot_list = combined_arr[dens_mask]
 
     # get the index of the non-zero density
-    non_zero_vec = vec[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
-    non_zero_dens = data[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
-    non_zero_dens_p1 = prob_c1[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
-    non_zero_dens_p2 = prob_c2[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
-    non_zero_dens_p3 = prob_c3[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
-    non_zero_dens_p4 = prob_c4[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
+    non_zero_vec = vec[
+        non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]
+    ]
+    non_zero_dens = data[
+        non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]
+    ]
+    non_zero_dens_p1 = prob_c1[
+        non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]
+    ]
+    non_zero_dens_p2 = prob_c2[
+        non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]
+    ]
+    non_zero_dens_p3 = prob_c3[
+        non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]
+    ]
+    non_zero_dens_p4 = prob_c4[
+        non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]
+    ]
 
     # find the new indices
     new_ind_arr = (non_zero_rot_list[:, 3:6] + cent).astype(int)
 
     # save the rotated data
-    new_vec_array[new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]] = np.einsum("ij, kj->ki", mtx, non_zero_vec)
-    new_data_array[new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]] = non_zero_dens
+    new_vec_array[new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]] = np.einsum(
+        "ij, kj->ki", mtx, non_zero_vec
+    )
+    new_data_array[
+        new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]
+    ] = non_zero_dens
     new_p1[new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]] = non_zero_dens_p1
     new_p2[new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]] = non_zero_dens_p2
     new_p3[new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]] = non_zero_dens_p3
@@ -919,12 +997,7 @@ def rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx):
     return new_vec_array, new_data_array, new_p1, new_p2, new_p3, new_p4
 
 
-def get_score(
-        target_map,
-        search_map_data,
-        search_map_vec,
-        trans
-):
+def get_score(target_map, search_map_data, search_map_vec, trans):
     target_map_data = target_map.data
     target_map_vec = target_map.vec
 
@@ -948,11 +1021,19 @@ def get_score(
     if trans[2] > 0.5 * dim:
         t[2] -= dim
 
-    target_pos = np.array(np.meshgrid(np.arange(dim), np.arange(dim), np.arange(dim), )).T.reshape(-1, 3)
+    target_pos = np.array(
+        np.meshgrid(
+            np.arange(dim),
+            np.arange(dim),
+            np.arange(dim),
+        )
+    ).T.reshape(-1, 3)
 
     search_pos = target_pos + t
 
-    total += np.count_nonzero(target_map_data[target_pos[:, 0], target_pos[:, 1], target_pos[:, 2]])
+    total += np.count_nonzero(
+        target_map_data[target_pos[:, 0], target_pos[:, 1], target_pos[:, 2]]
+    )
 
     combined_arr = np.hstack((target_pos, search_pos))
 
@@ -963,7 +1044,7 @@ def get_score(
         & (combined_arr[:, 3] < dim)
         & (combined_arr[:, 4] < dim)
         & (combined_arr[:, 5] < dim)
-        ]
+    ]
 
     target_pos = combined_arr[:, 0:3]
     search_pos = combined_arr[:, 3:6]
@@ -980,13 +1061,25 @@ def get_score(
     cc = np.sum(np.multiply(d1, d2))  # cross correlation
     pcc = np.sum(np.multiply(pd1, pd2))  # Pearson cross correlation
 
-    target_zero_mask = target_map_data[target_pos[:, 0], target_pos[:, 1], target_pos[:, 2]] == 0
-    target_non_zero_mask = target_map_data[target_pos[:, 0], target_pos[:, 1], target_pos[:, 2]] > 0
-    search_non_zero_mask = search_map_data[search_pos[:, 0], search_pos[:, 1], search_pos[:, 2]] > 0
-    search_non_zero_count = np.count_nonzero(np.multiply(target_zero_mask, search_non_zero_mask))
+    target_zero_mask = (
+        target_map_data[target_pos[:, 0], target_pos[:, 1], target_pos[:, 2]] == 0
+    )
+    target_non_zero_mask = (
+        target_map_data[target_pos[:, 0], target_pos[:, 1], target_pos[:, 2]] > 0
+    )
+    search_non_zero_mask = (
+        search_map_data[search_pos[:, 0], search_pos[:, 1], search_pos[:, 2]] > 0
+    )
+    search_non_zero_count = np.count_nonzero(
+        np.multiply(target_zero_mask, search_non_zero_mask)
+    )
 
-    trimmed_target_vec = target_map_vec[target_pos[:, 0], target_pos[:, 1], target_pos[:, 2]]
-    trimmed_search_vec = search_map_vec[search_pos[:, 0], search_pos[:, 1], search_pos[:, 2]]
+    trimmed_target_vec = target_map_vec[
+        target_pos[:, 0], target_pos[:, 1], target_pos[:, 2]
+    ]
+    trimmed_search_vec = search_map_vec[
+        search_pos[:, 0], search_pos[:, 1], search_pos[:, 2]
+    ]
 
     total += search_non_zero_count
 
@@ -1000,7 +1093,9 @@ def get_score(
         "Overlap="
         + str(float(Nm) / float(total))
         + " "
-        + str(Nm) + "/" + str(total)
+        + str(Nm)
+        + "/"
+        + str(total)
         + " CC="
         + str(cc / (std1 * std2))
         + " PCC="
@@ -1012,7 +1107,7 @@ def get_score(
 
 
 def calc_angle_comb(ang_interval):
-    """ Calculate the all the possible combination of angles given the interval in degrees"""
+    """Calculate the all the possible combination of angles given the interval in degrees"""
 
     x_angle = []
     y_angle = []
@@ -1034,7 +1129,7 @@ def calc_angle_comb(ang_interval):
     seen = set()
     uniq = []
     for ang in angle_comb:
-        quat = tuple(np.round(R.from_euler('ZYX', ang, degrees=True).as_quat(), 4))
+        quat = tuple(np.round(R.from_euler("ZYX", ang, degrees=True).as_quat(), 4))
         if quat not in seen:
             uniq.append(ang)
             seen.add(quat)
@@ -1083,19 +1178,21 @@ def gpu_rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, new_pos_grid, device):
     new_data_array = torch.zeros_like(orig_mrc_data)
 
     in_bound_mask = (
-            (old_pos[:, 0] >= 0)
-            * (old_pos[:, 1] >= 0)
-            * (old_pos[:, 2] >= 0)
-            * (old_pos[:, 0] < dim)
-            * (old_pos[:, 1] < dim)
-            * (old_pos[:, 2] < dim)
+        (old_pos[:, 0] >= 0)
+        * (old_pos[:, 1] >= 0)
+        * (old_pos[:, 2] >= 0)
+        * (old_pos[:, 0] < dim)
+        * (old_pos[:, 1] < dim)
+        * (old_pos[:, 2] < dim)
     )
 
     # get valid old positions in bound
     valid_old_pos = (old_pos[in_bound_mask]).long()
 
     # get nonzero density positions in the map
-    non_zero_mask = orig_mrc_data[valid_old_pos[:, 0], valid_old_pos[:, 1], valid_old_pos[:, 2]] > 0
+    non_zero_mask = (
+        orig_mrc_data[valid_old_pos[:, 0], valid_old_pos[:, 1], valid_old_pos[:, 2]] > 0
+    )
 
     # apply nonzero mask to valid positions
     non_zero_old_pos = valid_old_pos[non_zero_mask]
@@ -1105,10 +1202,13 @@ def gpu_rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, new_pos_grid, device):
 
     # fill new density entries
     new_data_array[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = orig_mrc_data[
-        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]
+    ]
 
     # fetch and rotate the vectors
-    non_zero_vecs = orig_mrc_vec[non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+    non_zero_vecs = orig_mrc_vec[
+        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]
+    ]
 
     new_vec = non_zero_vecs @ mtx.T
     # new_vec = np.einsum("ij, kj->ki", mtx, non_zero_vecs)
@@ -1125,10 +1225,8 @@ def gpu_fft_search_best_dot(target_list, query_list):
 
     Args:
         target_list (list(numpy.array)): FFT transformed result from target map (any dimensions)
-        query_list (list(numpy.array)): the input query map vector array (must has the same dimensions as target_list)
+        query_list (list(numpy.array)): the input query map vector array (must have the same dimensions as target_list)
         a, b, c (numpy.array): empty n-bytes aligned arrays for holding intermediate values in the transformation
-        fft_object (pyfftw.FFTW): preset FFT transformation plan
-        ifft_object (pyfftw.FFTW): preset inverse FFT transformation plan
 
     Returns: dot_product_list: (list(numpy.array)): vector product result that can be fed into find_best_trans_list()
     to find best translation
@@ -1138,7 +1236,7 @@ def gpu_fft_search_best_dot(target_list, query_list):
     for target_complex, query_real in zip(target_list, query_list):
         query_complex = torch.fft.rfftn(query_real)
         dot_complex = target_complex * query_complex
-        dot_real = torch.fft.irfftn(dot_complex, norm='ortho')
+        dot_real = torch.fft.irfftn(dot_complex, norm="ortho")
         dot_product_list.append(dot_real.cpu().numpy())
 
     return dot_product_list
@@ -1161,12 +1259,21 @@ def gpu_fft_get_score_trans_other(target_X, search_data, mode, ave=None, device=
     x2 = torch.from_numpy(x2).to(device)
     X2 = torch.fft.rfftn(x2)
     dot_X = target_X * X2
-    real_X = torch.fft.irfftn(dot_X, norm='ortho')
+    real_X = torch.fft.irfftn(dot_X, norm="ortho")
 
     return real_X.cpu().numpy()
 
 
-def gpu_rot_and_search_fft(data, vec, angle, target_list, mrc_target, device, mode="VecProduct", new_pos_grid=None):
+def gpu_rot_and_search_fft(
+    data,
+    vec,
+    angle,
+    target_list,
+    mrc_target,
+    device,
+    mode="VecProduct",
+    new_pos_grid=None,
+):
     rot_mtx = R.from_euler("xyz", angle, degrees=True).as_matrix().astype(np.float32)
     rot_mtx = torch.from_numpy(rot_mtx).to(device)
 
@@ -1188,16 +1295,14 @@ def gpu_rot_and_search_fft(data, vec, angle, target_list, mrc_target, device, mo
     # otherwise just use single dimension mode
     else:
         # GPU fft part, converted back to numpy array at the end
-        fft_result_vec = gpu_fft_get_score_trans_other(target_list[0],
-                                                       new_data,
-                                                       mode,
-                                                       mrc_target.ave,
-                                                       device)
+        fft_result_vec = gpu_fft_get_score_trans_other(
+            target_list[0], new_data, mode, mrc_target.ave, device
+        )
         vec_score, vec_trans = find_best_trans_list([fft_result_vec])
         if mode == "CC":
-            vec_score = vec_score / (mrc_target.std ** 2)
+            vec_score = vec_score / (mrc_target.std**2)
         if mode == "PCC":
-            vec_score = vec_score / (mrc_target.std_norm_ave ** 2)
+            vec_score = vec_score / (mrc_target.std_norm_ave**2)
 
     return vec_score, vec_trans, new_vec.cpu().numpy(), new_data.cpu().numpy()
 
@@ -1223,13 +1328,17 @@ def find_best_trans_list(input_list):
 
 
 def format_score_result(result, ave, std):
-    return (f"Rotation {result['angle']}, DOT Score: {result['vec_score']}, DOT Trans: {result['vec_trans']}, " +
-            f"Prob Score: {result['prob_score']}, Prob Trans: {result['prob_trans']}, " +
-            f"MIX Score: {result['mixed_score']}, MIX Trans: {result['mixed_trans']}, " +
-            f"Normalized Mix Score: {(result['mixed_score'] - ave) / std}")
+    return (
+        f"Rotation {result['angle']}, DOT Score: {result['vec_score']}, DOT Trans: {result['vec_trans']}, "
+        + f"Prob Score: {result['prob_score']}, Prob Trans: {result['prob_trans']}, "
+        + f"MIX Score: {result['mixed_score']}, MIX Trans: {result['mixed_trans']}, "
+        + f"Normalized Mix Score: {(result['mixed_score'] - ave) / std}"
+    )
 
 
-def find_best_trans_mixed(vec_fft_results, prob_fft_results, alpha, vstd, vave, pstd, pave):
+def find_best_trans_mixed(
+    vec_fft_results, prob_fft_results, alpha, vstd, vave, pstd, pave
+):
     """
     It takes the sum of the two arrays, normalizes them, mixes them, and then finds the best translation
     :param vec_fft_results: the results of the FFT on the vectorized image
@@ -1267,7 +1376,9 @@ def save_rotated_pdb(input_pdb, rot_mtx, trans_vec, save_path):
     elif input_pdb.split(".")[-1] == "cif":
         parser = MMCIFParser(QUIET=True)
     else:
-        print("Input file is not pdb or cif format. No transform PDB will be generated.")
+        print(
+            "Input file is not pdb or cif format. No transform PDB will be generated."
+        )
         return
 
     structure = parser.get_structure("search", input_pdb)
@@ -1277,3 +1388,85 @@ def save_rotated_pdb(input_pdb, rot_mtx, trans_vec, save_path):
 
     pdbio.set_structure(structure)
     pdbio.save(save_path)
+
+
+def gpu_rot_mrc_prob(
+    data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx, new_pos_grid, device
+):
+    mrc_data = torch.from_numpy(data).to(device)
+    mrc_vec = torch.from_numpy(vec).to(device)
+    prob_c1 = torch.from_numpy(prob_c1).to(device)
+    prob_c2 = torch.from_numpy(prob_c2).to(device)
+    prob_c3 = torch.from_numpy(prob_c3).to(device)
+    prob_c4 = torch.from_numpy(prob_c4).to(device)
+    new_pos_grid = torch.from_numpy(new_pos_grid).to(device)
+
+    # set the dimension to be x dimension as all dimension are the same
+    dim = data.shape[0]
+    # set the rotation center
+    cent = 0.5 * float(dim)
+    # get relative new positions from center
+    new_pos = new_pos_grid - cent
+
+    # reversely rotate the new position lists to get old positions
+    old_pos = new_pos @ mtx + 0.5 * float(dim)
+
+    # create new array for density, vector and probability
+    new_vec_array = torch.zeros_like(vec)
+    new_data_array = torch.zeros_like(data)
+    new_p1 = torch.zeros_like(prob_c1)
+    new_p2 = torch.zeros_like(prob_c2)
+    new_p3 = torch.zeros_like(prob_c3)
+    new_p4 = torch.zeros_like(prob_c4)
+
+    in_bound_mask = (
+        (old_pos[:, 0] >= 0)
+        * (old_pos[:, 1] >= 0)
+        * (old_pos[:, 2] >= 0)
+        * (old_pos[:, 0] < dim)
+        * (old_pos[:, 1] < dim)
+        * (old_pos[:, 2] < dim)
+    )
+
+    # get valid old positions in bound
+    valid_old_pos = (old_pos[in_bound_mask]).long()
+
+    # get nonzero density positions in the map
+    non_zero_mask = (
+        mrc_data[valid_old_pos[:, 0], valid_old_pos[:, 1], valid_old_pos[:, 2]] > 0
+    )
+
+    # apply nonzero mask to valid positions
+    non_zero_old_pos = valid_old_pos[non_zero_mask]
+
+    # get corresponding new positions
+    new_pos = (new_pos[in_bound_mask][non_zero_mask] + cent).long()
+
+    # fill new density entries
+    new_data_array[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = mrc_data[
+        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]
+    ]
+    new_p1[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = prob_c1[
+        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]
+    ]
+    new_p2[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = prob_c2[
+        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]
+    ]
+    new_p3[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = prob_c3[
+        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]
+    ]
+    new_p4[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = prob_c4[
+        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]
+    ]
+
+    # fetch and rotate the vectors
+    non_zero_vecs = mrc_vec[
+        non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]
+    ]
+
+    new_vec = non_zero_vecs @ mtx.T
+
+    # fill new vector entries
+    new_vec_array[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = new_vec
+
+    return new_vec_array, new_data_array, new_p1, new_p2, new_p3, new_p4

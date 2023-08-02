@@ -7,7 +7,7 @@ dependencies:
   - python=3.10
   - cudatoolkit=11.8
   - pip
-  - pytorch
+  - pytorch=2.0.1
   - mrcfile
   - numba
   - numpy

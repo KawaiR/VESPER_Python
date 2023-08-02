@@ -71,11 +71,11 @@ Usage: main.py orig [-h] -a A -b B [-t T] [-T T] [-g G] [-s S] [-A A] [-N N] [-S
   -A {Angle Spacing}        Sampling angle spacing def=30.0
   -N {Number}               Refine Top [int] models def=10
   -S                        Show topN models vector representation in PDB format, def=false
-  -M {Mode}                 V: vector product mode (Default)
-                            O: overlap mode
+  -M {Mode}                 V: Vector Product mode (Default)
+                            O: Overlap mode
                             C: Cross Correlation Coefficient
                             P: Pearson Correlation Coefficient
-                            L: Laplacian Filtering Mode
+                            L: Laplacian Filtering mode
   -E                        Evaluation mode of the current position, def=false
   -gpu {GPUID}              GPU ID to use, if not present, use CPU
   -nodup                    Remove duplicate positions using heuristics (Optional)
