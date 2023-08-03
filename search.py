@@ -365,6 +365,9 @@ def search_map_fft(
     std = np.std(score_arr)
     print("\nStd= " + str(std) + " Ave= " + str(ave) + "\n")
 
+    # sort the results by score
+    angle_score = sorted(angle_score, key=lambda k: k["vec_score"], reverse=True)
+
     if remove_dup:
 
         print("###Start Duplicate Removal###")
@@ -386,7 +389,7 @@ def search_map_fft(
                 trans = hash_angs[tuple(result_mrc["angle"])]
                 # manhattan distance
                 if np.sum(np.abs(trans - result_mrc["vec_trans"])) < 3 * (
-                    mrc_search.xdim // 5
+                    mrc_search.xdim // 4
                 ):
                     result_mrc["vec_score"] = 0
                     continue
@@ -435,7 +438,7 @@ def search_map_fft(
                     )
         ldp_atoms = np.array(ldp_atoms)
         ldp_atoms = torch.from_numpy(ldp_atoms).to(device)
-        ldp_atoms = ldp_atoms.unsqueeze(0)
+        # ldp_atoms = ldp_atoms.unsqueeze(0)
 
         # get ca atoms from backbone
         backbone_ca = []
@@ -461,15 +464,21 @@ def search_map_fft(
 
             # rotated backbone CA
             rot_backbone_ca = torch.matmul(backbone_ca, rot_mtx) + trans_vec
-            rot_backbone_ca = rot_backbone_ca.unsqueeze(1)
+            # rot_backbone_ca = rot_backbone_ca.unsqueeze(1)
 
             # calculate all pairwise distances
-            dist_mtx = torch.nn.functional.pairwise_distance(
-                rot_backbone_ca, ldp_atoms, p=2.0
-            )
+            # dist_mtx = torch.nn.functional.pairwise_distance(
+            #     rot_backbone_ca, ldp_atoms, p=2.0
+            # )
+
+            dist_mtx = torch.cdist(rot_backbone_ca, ldp_atoms, p=2)
 
             # get the min distance for each ldp atom
-            min_dist = torch.min(dist_mtx, dim=1)[0]
+            min_dist = torch.min(dist_mtx, dim=1).values
+
+            # print("LDP:", ldp_atoms.shape)
+            # print("CA:", rot_backbone_ca.shape)
+            # print("DIST", min_dist.shape)
 
             # get the number of ca atoms within 3.0 angstroms
             num_ca = torch.sum(min_dist < 3.0)
