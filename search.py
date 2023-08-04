@@ -597,9 +597,9 @@ def search_map_fft(
             folder_path = folder
         else:
             folder_path = (
-                    Path.cwd()
-                    / "outputs"
-                    / ("VESPER_RUN_" + datetime.now().strftime("%m%d_%H%M%S"))
+                Path.cwd()
+                / "outputs"
+                / ("VESPER_RUN_" + datetime.now().strftime("%m%d_%H%M%S"))
             )
         os.makedirs(folder_path, exist_ok=True)
         os.makedirs(os.path.join(folder_path, "VEC"), exist_ok=True)
@@ -676,19 +676,27 @@ def search_map_fft(
             if input_pdb.split(".")[-1] == "pdb":
                 parser = PDBParser(QUIET=True)
                 save_rotated_pdb(
-                    input_pdb, rot_mtx, true_trans, str(folder_path / "PDB" / file_name), parser, pdbio
+                    input_pdb,
+                    rot_mtx,
+                    true_trans,
+                    os.path.join(folder_path, "PDB", file_name),
+                    parser,
+                    pdbio,
                 )
             elif input_pdb.split(".")[-1] == "cif":
                 parser = MMCIFParser(QUIET=True)
                 save_rotated_pdb(
-                    input_pdb, rot_mtx, true_trans, str(folder_path / "PDB" / file_name), parser, pdbio
+                    input_pdb,
+                    rot_mtx,
+                    true_trans,
+                    os.path.join(folder_path, "PDB", file_name),
+                    parser,
+                    pdbio,
                 )
             else:
                 print(
                     "Input file is not pdb or cif format. No transform PDB will be generated."
                 )
-
-
 
     return refined_list
 
