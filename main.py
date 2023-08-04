@@ -174,8 +174,17 @@ if __name__ == "__main__":
             print("Output folder: ", args.o)
         if args.gpu:
             print("Using GPU ID: ", args.gpu)
-        if args.pdbin:
+        if not args.pdbin or not os.path.exists(args.pdbin):
+            print("No input PDB file, skipping transformation")
+            args.pdbin = None
+        else:
             print("Transform PDB file: ", args.pdbin)
+        if args.ca and args.ldp and os.path.exists(args.ca) and os.path.exists(args.ldp):
+            print("LDP Recall Reranking Enabled")
+            print("LDP PDB file: ", args.ldp)
+            print("Backbone PDB file: ", args.ca)
+        else:
+            print("LDP Recall Reranking Disabled")
 
         # construct mrc objects
         mrc1 = MrcObj(objA)
@@ -235,10 +244,6 @@ if __name__ == "__main__":
         else:
             use_gpu = False
             gpu_id = -1
-
-        if not args.pdbin or not os.path.exists(args.pdbin):
-            print("Input PDB file does not exist")
-            args.pdbin = None
 
         search_map_fft(mrc_N1, mrc_N2,
                        TopN=topN, ang=angle_spacing, mode=modeVal, is_eval_mode=evalMode,

@@ -369,6 +369,7 @@ def search_map_fft(
     angle_score = sorted(angle_score, key=lambda k: k["vec_score"], reverse=True)
 
     if remove_dup:
+        new_angle_score = []
 
         print("###Start Duplicate Removal###")
 
@@ -420,8 +421,10 @@ def search_map_fft(
                         hash_angs[tuple(curr_trans)] = np.array(result_mrc["vec_trans"])
 
             non_dup_count += 1
+            new_angle_score.append(result_mrc)
 
         print("#Non-duplicate count: " + str(non_dup_count))
+        angle_score = new_angle_score
 
     # LDP Recall calculation and sort
 
@@ -596,57 +599,6 @@ def search_map_fft(
     else:
         refined_list = sorted_top_n
 
-    # refined_score = []
-    # if ang > 5.0:
-    #
-    #     # setup all the angles for refinement
-    #     # initialize the refinement list by ±5 degrees
-    #     refine_ang_list = []
-    #     for result_mrc in sorted_top_n:
-    #         ang = result_mrc["angle"]
-    #         ang_list = np.array(
-    #             np.meshgrid(
-    #                 [ang[0] - 5, ang[0], ang[0] + 5],
-    #                 [ang[1] - 5, ang[1], ang[1] + 5],
-    #                 [ang[2] - 5, ang[2], ang[2] + 5],
-    #             )
-    #         ).T.reshape(-1, 3)
-    #
-    #         # sanity check
-    #         ang_list = ang_list[(ang_list[:, 0] < 360) &
-    #                             (ang_list[:, 1] < 360) &
-    #                             (ang_list[:, 2] <= 180)]
-    #
-    #         ang_list[ang_list < 0] += 360
-    #
-    #         refine_ang_list.append(ang_list)
-    #
-    #     refine_ang_list = np.concatenate(refine_ang_list, axis=0)
-    #
-    #     for angle in tqdm(refine_ang_list, desc="Refining Rotation"):
-    #         vec_score, vec_trans, new_vec, new_data = rot_and_search_fft(mrc_search.data,
-    #                                                                      mrc_search.vec,
-    #                                                                      angle,
-    #                                                                      target_list,
-    #                                                                      mrc_target,
-    #                                                                      (a, b, c),
-    #                                                                      fft_object,
-    #                                                                      ifft_object,
-    #                                                                      mode=mode)
-    #
-    #         refined_score.append({"angle": tuple(angle),
-    #                               "vec_score": vec_score * rd3,
-    #                               "vec_trans": vec_trans,
-    #                               "vec": new_vec,
-    #                               "data": new_data})
-    #
-    #     # sort the list to find the TopN with best scores
-    #     refined_list = sorted(refined_score, key=lambda x: x["vec_score"], reverse=True)[:TopN]
-    #
-    # else:
-    #     # no action taken when refinement is disabled
-    #     refined_list = sorted_top_n
-
     # Write result to PDB files
     if showPDB:
         if folder is not None:
@@ -729,7 +681,10 @@ def search_map_fft(
             )
             file_name = f"#{i}_{angle_str}_{trans_str}.pdb"
             save_rotated_pdb(
-                input_pdb, rot_mtx, true_trans, os.path.join(folder_path, "PDB", file_name)
+                input_pdb,
+                rot_mtx,
+                true_trans,
+                os.path.join(folder_path, "PDB", file_name),
             )
 
     return refined_list
