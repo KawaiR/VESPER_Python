@@ -1,4 +1,5 @@
 import copy
+import os.path
 
 import numba
 import numpy as np
@@ -671,9 +672,9 @@ def save_pdb(
     dim = sampled_mrc_data.shape[0]
 
     if cluster:
-        filename = "C_{:1d}-S_{:>7.3f}.pdb".format(rank, score).replace(" ", "_")
+        filename = "C_{:1d}-S_{:.3f}.pdb".format(rank, score).replace(" ", "_")
     else:
-        filename = "R_{:02d}-S_{:>7.3f}.pdb".format(rank, score).replace(" ", "_")
+        filename = "R_{:02d}-S_{:.3f}.pdb".format(rank, score).replace(" ", "_")
     # filename = "M_{:02d}-S_{:>7.3f}-A_{:>5.1f}_{:>5.1f}_{:>5.1f}-T_{:>3.0f}_{:>3.0f}_{:>3.0f}.pdb".format(
     #     rank,
     #     score,
@@ -684,7 +685,7 @@ def save_pdb(
     #     trans[1],
     #     trans[2]).replace(" ", "_")
 
-    filepath = folder_path / filename
+    filepath = os.path.join(folder_path, filename)
 
     origin = np.array([origin[0], origin[1], origin[2]])
     trans = np.array(trans)

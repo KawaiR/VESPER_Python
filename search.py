@@ -456,8 +456,16 @@ def search_map_fft(
 
         for i, result_mrc in enumerate(angle_score):
             rot_vec = result_mrc["angle"]
-            trans_vec = np.array(result_mrc["vec_trans"])
-            trans_vec = torch.from_numpy(trans_vec).to(device)
+            r = R.from_euler("xyz", rot_vec, degrees=True)
+            new_trans = convert_trans(
+                mrc_target.cent,
+                mrc_search.cent,
+                r,
+                result_mrc["vec_trans"],
+                mrc_search.xwidth,
+                mrc_search.xdim,
+            )
+            trans_vec = torch.from_numpy(np.array(new_trans)).to(device)
 
             rot_mtx = R.from_euler("xyz", rot_vec, degrees=True).inv().as_matrix()
             rot_mtx = torch.from_numpy(rot_mtx).to(device)
@@ -475,10 +483,6 @@ def search_map_fft(
 
             # get the min distance for each ldp atom
             min_dist = torch.min(dist_mtx, dim=1).values
-
-            # print("LDP:", ldp_atoms.shape)
-            # print("CA:", rot_backbone_ca.shape)
-            # print("DIST", min_dist.shape)
 
             # get the number of ca atoms within 3.0 angstroms
             num_ca = torch.sum(min_dist < 3.0)
@@ -654,9 +658,9 @@ def search_map_fft(
                 / ("VESPER_RUN_" + datetime.now().strftime("%m%d_%H%M%S"))
             )
         os.makedirs(folder_path, exist_ok=True)
-        os.makedirs(folder_path / "VEC", exist_ok=True)
+        os.makedirs(os.path.join(folder_path, "VEC"), exist_ok=True)
         if input_pdb:
-            os.makedirs(folder_path / "PDB", exist_ok=True)
+            os.makedirs(os.path.join(folder_path, "PDB"), exist_ok=True)
         print("\n###Writing results to PDB files###")
     else:
         print()
@@ -704,7 +708,7 @@ def search_map_fft(
                 mrc_search.xwidth,
                 result_mrc["vec_trans"],
                 result_mrc["angle"],
-                folder_path / "VEC",
+                os.path.join(folder_path, "VEC"),
                 i,
             )
         if input_pdb:
@@ -725,7 +729,7 @@ def search_map_fft(
             )
             file_name = f"#{i}_{angle_str}_{trans_str}.pdb"
             save_rotated_pdb(
-                input_pdb, rot_mtx, true_trans, str(folder_path / "PDB" / file_name)
+                input_pdb, rot_mtx, true_trans, os.path.join(folder_path, "PDB", file_name)
             )
 
     return refined_list

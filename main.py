@@ -144,18 +144,15 @@ if __name__ == "__main__":
         objA = args.a
         objB = args.b
 
-        # all optional positional arguments
-        # check for none
         threshold1 = args.t
         threshold2 = args.T
 
-        # with default
         bandwidth = args.g
         voxel_spacing = args.s
         angle_spacing = args.A
         topN = args.N
 
-        # necessary?
+        # Show vector representation
         showPDB = args.S
 
         modeVal = args.M
@@ -171,6 +168,14 @@ if __name__ == "__main__":
         print("Sampling angle spacing: ", angle_spacing)
         print("Refine Top ", topN, " models")
         print("Show topN models in PDB format: ", showPDB)
+        print("Remove duplicates: ", args.nodup)
+        print("Scoring mode: ", modeVal)
+        if args.o:
+            print("Output folder: ", args.o)
+        if args.gpu:
+            print("Using GPU ID: ", args.gpu)
+        if args.pdbin:
+            print("Transform PDB file: ", args.pdbin)
 
         # construct mrc objects
         mrc1 = MrcObj(objA)

@@ -1,8 +1,0 @@
-mrcfile
-numba
-numpy
-pyFFTW
-scipy
-tqdm
-scikit-learn
-biopython
