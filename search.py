@@ -69,7 +69,7 @@ class MrcObj:
         self.Nact = None  # non-zero density voxel count
         self.ave = None  # average density value
         self.std_norm_ave = None  # L2 norm normalized with average density value
-        self.std = None  # unnormalize L2 norm
+        self.std = None  # denormalize L2 norm
 
 
 def fft_search_score_trans(
@@ -459,16 +459,8 @@ def search_map_fft(
 
         for i, result_mrc in enumerate(angle_score):
             rot_vec = result_mrc["angle"]
-            r = R.from_euler("xyz", rot_vec, degrees=True)
-            new_trans = convert_trans(
-                mrc_target.cent,
-                mrc_search.cent,
-                r,
-                result_mrc["vec_trans"],
-                mrc_search.xwidth,
-                mrc_search.xdim,
-            )
-            trans_vec = torch.from_numpy(np.array(new_trans)).to(device)
+            trans_vec = np.array(result_mrc["vec_trans"])
+            trans_vec = torch.from_numpy(trans_vec).to(device)
 
             rot_mtx = R.from_euler("xyz", rot_vec, degrees=True).inv().as_matrix()
             rot_mtx = torch.from_numpy(rot_mtx).to(device)
@@ -605,9 +597,9 @@ def search_map_fft(
             folder_path = folder
         else:
             folder_path = (
-                Path.cwd()
-                / "outputs"
-                / ("VESPER_RUN_" + datetime.now().strftime("%m%d_%H%M%S"))
+                    Path.cwd()
+                    / "outputs"
+                    / ("VESPER_RUN_" + datetime.now().strftime("%m%d_%H%M%S"))
             )
         os.makedirs(folder_path, exist_ok=True)
         os.makedirs(os.path.join(folder_path, "VEC"), exist_ok=True)
@@ -680,12 +672,23 @@ def search_map_fft(
                 f"tx{true_trans[0]:.3f}_ty{true_trans[1]:.3f}_tz{true_trans[2]:.3f}"
             )
             file_name = f"#{i}_{angle_str}_{trans_str}.pdb"
-            save_rotated_pdb(
-                input_pdb,
-                rot_mtx,
-                true_trans,
-                os.path.join(folder_path, "PDB", file_name),
-            )
+            pdbio = PDBIO()
+            if input_pdb.split(".")[-1] == "pdb":
+                parser = PDBParser(QUIET=True)
+                save_rotated_pdb(
+                    input_pdb, rot_mtx, true_trans, str(folder_path / "PDB" / file_name), parser, pdbio
+                )
+            elif input_pdb.split(".")[-1] == "cif":
+                parser = MMCIFParser(QUIET=True)
+                save_rotated_pdb(
+                    input_pdb, rot_mtx, true_trans, str(folder_path / "PDB" / file_name), parser, pdbio
+                )
+            else:
+                print(
+                    "Input file is not pdb or cif format. No transform PDB will be generated."
+                )
+
+
 
     return refined_list
 

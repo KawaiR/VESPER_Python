@@ -1371,21 +1371,9 @@ def find_best_trans_mixed(
     return best_score, best_trans
 
 
-def save_rotated_pdb(input_pdb, rot_mtx, trans_vec, save_path):
-    if input_pdb.split(".")[-1] == "pdb":
-        parser = PDBParser(QUIET=True)
-    elif input_pdb.split(".")[-1] == "cif":
-        parser = MMCIFParser(QUIET=True)
-    else:
-        print(
-            "Input file is not pdb or cif format. No transform PDB will be generated."
-        )
-        return
-
+def save_rotated_pdb(input_pdb, rot_mtx, trans_vec, save_path, parser, pdbio):
     structure = parser.get_structure("search", input_pdb)
     structure.transform(rot_mtx, trans_vec)
-
-    pdbio = PDBIO()
 
     pdbio.set_structure(structure)
     pdbio.save(save_path)

@@ -107,6 +107,7 @@ Usage: main.py orig [-h] -a A -b B [-t T] [-T T] [-g G] [-s S] [-A A] [-N N] [-S
                             P: Pearson Correlation Coefficient
                             L: Laplacian Filtering mode
   -E                        Evaluation mode of the current position, def=false
+  -o {Output Path}          Output path for the results, def=results
   -gpu {GPUID}              GPU ID to use, if not present, use CPU
   -nodup                    Remove duplicate positions using heuristics (Optional)
   -pdbin                    Input PDB file for transformation (Optional)

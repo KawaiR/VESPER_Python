@@ -1,5 +1,4 @@
 import argparse
-import os
 
 from search import *
 from utils import mrc_set_vox_size, fastVEC
