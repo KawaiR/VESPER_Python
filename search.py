@@ -4,7 +4,6 @@ import multiprocessing
 import os
 from datetime import datetime
 from pathlib import Path
-from itertools import product
 
 import mrcfile
 import pyfftw
@@ -325,7 +324,7 @@ def search_map_fft(
     angle_score = []
 
     # search process
-    for angle in tqdm(angle_comb):
+    for angle in tqdm(angle_comb, desc="Searching Rotations"):
         if gpu:
             vec_score, vec_trans, _, _ = gpu_rot_and_search_fft(
                 mrc_search.data,
@@ -368,6 +367,59 @@ def search_map_fft(
     # sort the results by score
     angle_score = sorted(angle_score, key=lambda k: k["vec_score"], reverse=True)
 
+    # LDP Recall calculation and sort
+    ldp_recalL_mode = ldp_path is not None and backbone_path is not None
+    if ldp_recalL_mode:
+        # get atom coords from ldp
+        ldp_atoms = []
+        with open(ldp_path) as f:
+            for line in f:
+                tokens = line.split()
+                if tokens[0] == "ATOM":
+                    ldp_atoms.append(
+                        np.array((float(tokens[6]), float(tokens[7]), float(tokens[8])))
+                    )
+        ldp_atoms = np.array(ldp_atoms)
+        ldp_atoms = torch.from_numpy(ldp_atoms).to(device)
+
+        # get ca atoms from backbone
+        backbone_ca = []
+        with open(backbone_path) as f:
+            for line in f:
+                tokens = line.split()
+                if tokens[0] == "ATOM" and tokens[2] == "CA":  # only CA atoms
+                    # if tokens[0] == "ATOM": # all atoms
+                    backbone_ca.append(
+                        np.array((float(tokens[6]), float(tokens[7]), float(tokens[8])))
+                    )
+
+        backbone_ca = np.array(backbone_ca)
+        backbone_ca = torch.from_numpy(backbone_ca).to(device)
+
+        # calculate for each rotation
+        for result_item in tqdm(angle_score, desc="Calculating LDP Recall Score"):
+            r = R.from_euler("xyz", result_item["angle"], degrees=True)
+            rot_mtx = r.inv().as_matrix()
+            rot_mtx = torch.from_numpy(rot_mtx).to(device)
+            real_trans = convert_trans(
+                mrc_target.cent,
+                mrc_search.cent,
+                r,
+                result_item["vec_trans"],
+                mrc_search.xwidth,
+                mrc_search.xdim,
+            )
+            result_item["ldp_recall"] = calc_ldp_recall_score(
+                ldp_atoms,
+                backbone_ca,
+                rot_mtx,
+                torch.from_numpy(np.array(real_trans)).to(device),
+                device,
+            )
+
+        # sort by LDP recall
+        angle_score = sorted(angle_score, key=lambda x: x["ldp_recall"], reverse=True)
+
     if remove_dup:
         new_angle_score = []
 
@@ -383,7 +435,7 @@ def search_map_fft(
         rng = n_angles_apart * int(ang)
         rng = int(rng)
 
-        for i, result_mrc in enumerate(angle_score):
+        for i, result_mrc in tqdm(enumerate(angle_score), desc="Removing Duplicates"):
             # duplicate removal
             if tuple(result_mrc["angle"]) in hash_angs.keys():
                 # print(f"Duplicate: {result_mrc['angle']}")
@@ -426,46 +478,8 @@ def search_map_fft(
         print("#Non-duplicate count: " + str(non_dup_count))
         angle_score = new_angle_score
 
-    # LDP Recall calculation and sort
-
-    if ldp_path is not None and backbone_path is not None:
-
-        # get atom coords from ldp
-        ldp_atoms = []
-        with open(ldp_path) as f:
-            for line in f:
-                tokens = line.split()
-                if tokens[0] == "ATOM":
-                    ldp_atoms.append(
-                        np.array((float(tokens[6]), float(tokens[7]), float(tokens[8])))
-                    )
-        ldp_atoms = np.array(ldp_atoms)
-        ldp_atoms = torch.from_numpy(ldp_atoms).to(device)
-
-        # get ca atoms from backbone
-        backbone_ca = []
-        with open(backbone_path) as f:
-            for line in f:
-                tokens = line.split()
-                if tokens[0] == "ATOM" and tokens[2] == "CA":  # only CA atoms
-                    # if tokens[0] == "ATOM": # all atoms
-                    backbone_ca.append(
-                        np.array((float(tokens[6]), float(tokens[7]), float(tokens[8])))
-                    )
-
-        backbone_ca = np.array(backbone_ca)
-        backbone_ca = torch.from_numpy(backbone_ca).to(device)
-
-        # caculate for each rotation
-        for result_item in angle_score:
-            result_item['ldp_recall'] = calc_ldp_recall_score(ldp_atoms,
-                                                              backbone_ca,
-                                                              result_item['angle'],
-                                                              result_item['vec_trans'],
-                                                              device)
-
     # sort the list and get top N results
-    if ldp_path is not None and backbone_path is not None:
+    if ldp_recalL_mode:
         sorted_top_n = sorted(angle_score, key=lambda x: x["ldp_recall"], reverse=True)[
             :TopN
         ]
@@ -497,7 +511,7 @@ def search_map_fft(
             "{:.3f}".format(new_trans[2]) + ")",
         )
 
-        if ldp_path is not None and backbone_path is not None:
+        if ldp_recalL_mode:
             print(f"LDP Recall Score: {result_mrc['ldp_recall']}")
 
     print()
@@ -532,7 +546,7 @@ def search_map_fft(
             ang_list[ang_list < 0] += 360
             ang_list[ang_list > 360] -= 360
 
-            for angle in tqdm(ang_list, desc="Refining Rotation"):
+            for angle in tqdm(ang_list, desc="Refining Rotations"):
                 if gpu:
                     vec_score, vec_trans, new_vec, new_data = gpu_rot_and_search_fft(
                         mrc_search.data,
@@ -557,32 +571,81 @@ def search_map_fft(
                         mode=mode,
                         new_pos_grid=search_pos_grid,
                     )
-                refined_score.append(
-                    {
-                        "angle": tuple(angle),
-                        "vec_score": vec_score * rd3,
-                        "vec_trans": vec_trans,
-                        "vec": new_vec,
-                        "data": new_data,
-                    }
-                )
-
-            refined_list.append(max(refined_score, key=lambda x: x["vec_score"]))
-        refined_list = sorted(refined_list, key=lambda x: x["vec_score"], reverse=True)
+                if ldp_recalL_mode:
+                    r = R.from_euler("xyz", angle, degrees=True)
+                    rot_mtx = r.inv().as_matrix()
+                    rot_mtx = torch.from_numpy(rot_mtx).to(device)
+                    real_trans = convert_trans(
+                        mrc_target.cent,
+                        mrc_search.cent,
+                        r,
+                        vec_trans,
+                        mrc_search.xwidth,
+                        mrc_search.xdim,
+                    )
+                    ldp_recall = calc_ldp_recall_score(
+                        ldp_atoms,
+                        backbone_ca,
+                        rot_mtx,
+                        torch.from_numpy(np.array(real_trans)).to(device),
+                        device,
+                    )
+                    refined_score.append(
+                        {
+                            "angle": tuple(angle),
+                            "vec_score": vec_score * rd3,
+                            "vec_trans": vec_trans,
+                            "vec": new_vec,
+                            "data": new_data,
+                            "ldp_recall": ldp_recall
+                        }
+                    )
+                else:
+                    refined_score.append(
+                        {
+                            "angle": tuple(angle),
+                            "vec_score": vec_score * rd3,
+                            "vec_trans": vec_trans,
+                            "vec": new_vec,
+                            "data": new_data,
+                        }
+                    )
+            if ldp_recalL_mode:
+                refined_list.append(max(refined_score, key=lambda x: x["ldp_recall"]))
+            else:
+                refined_list.append(max(refined_score, key=lambda x: x["vec_score"]))
+        if ldp_recalL_mode:
+            refined_list = sorted(refined_list, key=lambda x: x["ldp_recall"], reverse=True)
+        else:
+            refined_list = sorted(refined_list, key=lambda x: x["vec_score"], reverse=True)
     else:
+        # TODO: fix vec and data here
         refined_list = sorted_top_n
 
     # calculate LDP recall score for refined results
-    if ldp_path is not None and backbone_path is not None:
-        for result_item in refined_list:
-            result_item['ldp_recall'] = calc_ldp_recall_score(ldp_atoms,
-                                                              backbone_ca,
-                                                              result_item['angle'],
-                                                              result_item['vec_trans'],
-                                                              device)
+    # if ldp_recalL_mode:
+    #     for result_item in refined_list:
+    #         r = R.from_euler("xyz", result_item["angle"], degrees=True)
+    #         rot_mtx = r.inv().as_matrix()
+    #         rot_mtx = torch.from_numpy(rot_mtx).to(device)
+    #         real_trans = convert_trans(
+    #             mrc_target.cent,
+    #             mrc_search.cent,
+    #             r,
+    #             result_item["vec_trans"],
+    #             mrc_search.xwidth,
+    #             mrc_search.xdim,
+    #         )
+    #         result_item["ldp_recall"] = calc_ldp_recall_score(
+    #             ldp_atoms,
+    #             backbone_ca,
+    #             rot_mtx,
+    #             torch.from_numpy(np.array(real_trans)).to(device),
+    #             device,
+    #         )
 
     # Write result to PDB files
-    if showPDB:
+    if showPDB or input_pdb:
         if folder is not None:
             folder_path = folder
         else:
@@ -592,10 +655,13 @@ def search_map_fft(
                 / ("VESPER_RUN_" + datetime.now().strftime("%m%d_%H%M%S"))
             )
         os.makedirs(folder_path, exist_ok=True)
-        os.makedirs(os.path.join(folder_path, "VEC"), exist_ok=True)
+        print("Output Folder:", os.path.abspath(folder_path))
+        if showPDB:
+            print("\n###Writing vector results to PDB files###")
+            os.makedirs(os.path.join(folder_path, "VEC"), exist_ok=True)
         if input_pdb:
+            print("\n###Writing transformed PDB files###")
             os.makedirs(os.path.join(folder_path, "PDB"), exist_ok=True)
-        print("\n###Writing results to PDB files###")
     else:
         print()
 
@@ -631,7 +697,7 @@ def search_map_fft(
             f"Voxel Trans:{result_mrc['vec_trans']}, Normalized Score: {(result_mrc['vec_score'] - ave) / std}"
         )
 
-        if ldp_path is not None and backbone_path is not None:
+        if ldp_recalL_mode:
             print(f"LDP Recall Score: {result_mrc['ldp_recall']}")
 
         if showPDB:

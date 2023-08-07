@@ -703,29 +703,49 @@ def save_pdb(
     nres = 1
 
     pdb_file = open(filepath, "w")
-    for x in range(dim):
-        for y in range(dim):
-            for z in range(dim):
+    non_zero_dens_index = np.transpose(np.nonzero(sampled_mrc_data))
+    for idx in non_zero_dens_index:
+        tmp = idx * sample_width + add
+        atom_header = "ATOM{:>7d}  CA  ALA{:>6d}    ".format(natm, nres)
+        atom_content = "{:8.3f}{:8.3f}{:8.3f}{:6.2f}{:6.2f}".format(
+                            tmp[0], tmp[1], tmp[2], 1.0, score_arr[idx[0], idx[1], idx[2]]
+                        )
+        pdb_file.write(atom_header + atom_content + "\n")
+        natm += 1
 
-                if sampled_mrc_data[x][y][z] != 0.0:
-                    tmp = np.array([x, y, z])
-                    tmp = tmp * sample_width + add
-                    atom_header = "ATOM{:>7d}  CA  ALA{:>6d}    ".format(natm, nres)
-                    atom_content = "{:8.3f}{:8.3f}{:8.3f}{:6.2f}{:6.2f}".format(
-                        tmp[0], tmp[1], tmp[2], 1.0, score_arr[x][y][z]
-                    )
-                    pdb_file.write(atom_header + atom_content + "\n")
-                    natm += 1
+        tmp = (idx + sampled_mrc_vec[idx[0]][idx[1]][idx[2]]) * sample_width + add
+        atom_header = "ATOM{:>7d}  CB  ALA{:>6d}    ".format(natm, nres)
+        atom_content = "{:8.3f}{:8.3f}{:8.3f}{:6.2f}{:6.2f}".format(
+            tmp[0], tmp[1], tmp[2], 1.0, score_arr[idx[0], idx[1], idx[2]]
+        )
+        pdb_file.write(atom_header + atom_content + "\n")
+        natm += 1
+        nres += 1
 
-                    tmp = np.array([x, y, z])
-                    tmp = (tmp + sampled_mrc_vec[x][y][z]) * sample_width + add
-                    atom_header = "ATOM{:>7d}  CB  ALA{:>6d}    ".format(natm, nres)
-                    atom_content = "{:8.3f}{:8.3f}{:8.3f}{:6.2f}{:6.2f}".format(
-                        tmp[0], tmp[1], tmp[2], 1.0, score_arr[x][y][z]
-                    )
-                    pdb_file.write(atom_header + atom_content + "\n")
-                    natm += 1
-                    nres += 1
+
+    # for x in range(dim):
+    #     for y in range(dim):
+    #         for z in range(dim):
+    #
+    #             if sampled_mrc_data[x][y][z] != 0.0:
+    #                 tmp = np.array([x, y, z])
+    #                 tmp = tmp * sample_width + add
+    #                 atom_header = "ATOM{:>7d}  CA  ALA{:>6d}    ".format(natm, nres)
+    #                 atom_content = "{:8.3f}{:8.3f}{:8.3f}{:6.2f}{:6.2f}".format(
+    #                     tmp[0], tmp[1], tmp[2], 1.0, score_arr[x][y][z]
+    #                 )
+    #                 pdb_file.write(atom_header + atom_content + "\n")
+    #                 natm += 1
+    #
+    #                 tmp = np.array([x, y, z])
+    #                 tmp = (tmp + sampled_mrc_vec[x][y][z]) * sample_width + add
+    #                 atom_header = "ATOM{:>7d}  CB  ALA{:>6d}    ".format(natm, nres)
+    #                 atom_content = "{:8.3f}{:8.3f}{:8.3f}{:6.2f}{:6.2f}".format(
+    #                     tmp[0], tmp[1], tmp[2], 1.0, score_arr[x][y][z]
+    #                 )
+    #                 pdb_file.write(atom_header + atom_content + "\n")
+    #                 natm += 1
+    #                 nres += 1
 
 
 # @numba.jit(forceobj=True)
@@ -1460,16 +1480,16 @@ def gpu_rot_mrc_prob(
 
     return new_vec_array, new_data_array, new_p1, new_p2, new_p3, new_p4
 
-def calc_ldp_recall_score(ldp_arr, ca_arr, ang, trans, device):
+def calc_ldp_recall_score(ldp_arr, ca_arr, rot_mtx, trans, device):
     # move translation vector to GPU
-    trans_vec = torch.from_numpy(np.array(trans)).to(device)
+    # trans_vec = torch.from_numpy(np.array(trans)).to(device)
 
     # rotation matrix
-    rot_mtx = R.from_euler("xyz", ang, degrees=True).inv().as_matrix()
-    rot_mtx = torch.from_numpy(rot_mtx).to(device)
+    # rot_mtx = R.from_euler("xyz", ang, degrees=True).inv().as_matrix()
+    # rot_mtx = torch.from_numpy(rot_mtx).to(device)
 
     # rotated backbone CA
-    rot_backbone_ca = torch.matmul(ca_arr, rot_mtx) + trans_vec
+    rot_backbone_ca = torch.matmul(ca_arr, rot_mtx) + trans
 
     # calculate all pairwise distances
     dist_mtx = torch.cdist(rot_backbone_ca, ldp_arr, p=2)
