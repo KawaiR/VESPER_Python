@@ -1459,3 +1459,27 @@ def gpu_rot_mrc_prob(
     new_vec_array[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = new_vec
 
     return new_vec_array, new_data_array, new_p1, new_p2, new_p3, new_p4
+
+def calc_ldp_recall_score(ldp_arr, ca_arr, ang, trans, device):
+    # move translation vector to GPU
+    trans_vec = torch.from_numpy(np.array(trans)).to(device)
+
+    # rotation matrix
+    rot_mtx = R.from_euler("xyz", ang, degrees=True).inv().as_matrix()
+    rot_mtx = torch.from_numpy(rot_mtx).to(device)
+
+    # rotated backbone CA
+    rot_backbone_ca = torch.matmul(ca_arr, rot_mtx) + trans_vec
+
+    # calculate all pairwise distances
+    dist_mtx = torch.cdist(rot_backbone_ca, ldp_arr, p=2)
+
+    # get distance from the closest LDP point for each CA atom
+    min_dist = torch.min(dist_mtx, dim=1).values
+
+    # count the coverage
+    num_ca = torch.sum(min_dist < 3.0)
+    num_ca = num_ca.cpu().numpy()
+
+    # normalized by the total amount of CA atoms
+    return num_ca / len(rot_backbone_ca)

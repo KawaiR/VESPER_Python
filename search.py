@@ -441,7 +441,6 @@ def search_map_fft(
                     )
         ldp_atoms = np.array(ldp_atoms)
         ldp_atoms = torch.from_numpy(ldp_atoms).to(device)
-        # ldp_atoms = ldp_atoms.unsqueeze(0)
 
         # get ca atoms from backbone
         backbone_ca = []
@@ -457,34 +456,13 @@ def search_map_fft(
         backbone_ca = np.array(backbone_ca)
         backbone_ca = torch.from_numpy(backbone_ca).to(device)
 
-        for i, result_mrc in enumerate(angle_score):
-            rot_vec = result_mrc["angle"]
-            trans_vec = np.array(result_mrc["vec_trans"])
-            trans_vec = torch.from_numpy(trans_vec).to(device)
-
-            rot_mtx = R.from_euler("xyz", rot_vec, degrees=True).inv().as_matrix()
-            rot_mtx = torch.from_numpy(rot_mtx).to(device)
-
-            # rotated backbone CA
-            rot_backbone_ca = torch.matmul(backbone_ca, rot_mtx) + trans_vec
-            # rot_backbone_ca = rot_backbone_ca.unsqueeze(1)
-
-            # calculate all pairwise distances
-            # dist_mtx = torch.nn.functional.pairwise_distance(
-            #     rot_backbone_ca, ldp_atoms, p=2.0
-            # )
-
-            dist_mtx = torch.cdist(rot_backbone_ca, ldp_atoms, p=2)
-
-            # get the min distance for each ldp atom
-            min_dist = torch.min(dist_mtx, dim=1).values
-
-            # get the number of ca atoms within 3.0 angstroms
-            num_ca = torch.sum(min_dist < 3.0)
-            num_ca = num_ca.cpu().numpy()
-
-            # calculate the ldp recall
-            result_mrc["ldp_recall"] = num_ca / len(rot_backbone_ca)
+        # caculate for each rotation
+        for result_item in angle_score:
+            result_item['ldp_recall'] = calc_ldp_recall_score(ldp_atoms,
+                                                              backbone_ca,
+                                                              result_item['angle'],
+                                                              result_item['vec_trans'],
+                                                              device)
 
     # sort the list and get top N results
     if ldp_path is not None and backbone_path is not None:
@@ -518,6 +496,9 @@ def search_map_fft(
             "{:.3f}".format(new_trans[1]),
             "{:.3f}".format(new_trans[2]) + ")",
         )
+
+        if ldp_path is not None and backbone_path is not None:
+            print(f"LDP Recall Score: {result_mrc['ldp_recall']}")
 
     print()
 
@@ -591,6 +572,15 @@ def search_map_fft(
     else:
         refined_list = sorted_top_n
 
+    # calculate LDP recall score for refined results
+    if ldp_path is not None and backbone_path is not None:
+        for result_item in refined_list:
+            result_item['ldp_recall'] = calc_ldp_recall_score(ldp_atoms,
+                                                              backbone_ca,
+                                                              result_item['angle'],
+                                                              result_item['vec_trans'],
+                                                              device)
+
     # Write result to PDB files
     if showPDB:
         if folder is not None:
@@ -640,6 +630,9 @@ def search_map_fft(
         print(
             f"Voxel Trans:{result_mrc['vec_trans']}, Normalized Score: {(result_mrc['vec_score'] - ave) / std}"
         )
+
+        if ldp_path is not None and backbone_path is not None:
+            print(f"LDP Recall Score: {result_mrc['ldp_recall']}")
 
         if showPDB:
             save_pdb(
