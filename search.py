@@ -431,9 +431,10 @@ def search_map_fft(
         non_dup_count = 0
 
         # at least 2 angle spacings apart
-        n_angles_apart = 2
-        rng = n_angles_apart * int(ang)
-        rng = int(rng)
+        #n_angles_apart = 2
+        n_angles_apart = 30 // ang
+        ang_range = n_angles_apart * int(ang)
+        ang_range = int(ang_range)
 
         for i, result_mrc in tqdm(enumerate(angle_score), desc="Removing Duplicates"):
             # duplicate removal
@@ -441,10 +442,8 @@ def search_map_fft(
                 # print(f"Duplicate: {result_mrc['angle']}")
                 trans = hash_angs[tuple(result_mrc["angle"])]
                 # manhattan distance
-                if np.sum(np.abs(trans - result_mrc["vec_trans"])) < 3 * (
-                    mrc_search.xdim // 4
-                ):
-                    result_mrc["vec_score"] = 0
+                if np.sum(np.abs(trans - result_mrc["vec_trans"])) < mrc_search.xdim:
+                    # result_mrc["vec_score"] = 0
                     continue
 
             # add to hash
@@ -455,9 +454,9 @@ def search_map_fft(
             angle_z = int(result_mrc["angle"][2])
 
             # add surrounding angles to hash
-            for xx in range(angle_x - rng, angle_x + rng + 1, int(ang)):
-                for yy in range(angle_y - rng, angle_y + rng + 1, int(ang)):
-                    for zz in range(angle_z - rng, angle_z + rng + 1, int(ang)):
+            for xx in range(angle_x - ang_range, angle_x + ang_range + 1, int(ang)):
+                for yy in range(angle_y - ang_range, angle_y + ang_range + 1, int(ang)):
+                    for zz in range(angle_z - ang_range, angle_z + ang_range + 1, int(ang)):
                         x_positive = xx % 360
                         y_positive = yy % 360
                         z_positive = zz % 180
