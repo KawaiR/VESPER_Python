@@ -89,6 +89,9 @@ if __name__ == "__main__":
     orig.add_argument('-ldp', type=str, default=None, help='Path to the local dense point file def=None')
     orig.add_argument('-ca', type=str, default=None, help='Path to the CA file def=None')
     orig.add_argument('-pdbin', type=str, default=None, help='Input PDB file to be transformed def=None')
+    orig.add_argument('-mrcout', action='store_true', default=False, help='Output the transformed query map def=false')
+    orig.add_argument('-fref', action='store_true', default=False, help='Use finer angular sampling for refinement '
+                                                                        'def=false')
 
     # secondary structure matching menu
     prob.add_argument('-a', type=str, required=True, help='MAP1.mrc (large)')
@@ -244,6 +247,10 @@ if __name__ == "__main__":
             use_gpu = False
             gpu_id = -1
 
+        trans_mrc_path=None
+        if args.mrcout:
+            trans_mrc_path = args.b
+
         search_map_fft(mrc_N1, mrc_N2,
                        TopN=topN, ang=angle_spacing, mode=modeVal, is_eval_mode=evalMode,
                        showPDB=showPDB, folder=folder,
@@ -251,7 +258,9 @@ if __name__ == "__main__":
                        remove_dup=args.nodup,
                        ldp_path=args.ldp,
                        backbone_path=args.ca,
-                       input_pdb=args.pdbin)
+                       input_pdb=args.pdbin,
+                       input_mrc=trans_mrc_path,
+                       frefine=args.fref,)
 
 
     elif args.command == 'prob':
@@ -430,7 +439,10 @@ if __name__ == "__main__":
             mrc_N2_p3 = fastVEC(mrc2_p3, mrc_N2_p3, dreso=args.B, density_map=mrc2.data)
             mrc_N2_p4 = fastVEC(mrc2_p4, mrc_N2_p4, dreso=args.B, density_map=mrc2.data)
 
-            search_map_fft_prob(mrc_N1, mrc_N2, mrc_N1_p1, mrc_N1_p2, mrc_N1_p3, mrc_N1_p4, mrc_N2_p1, mrc_N2_p2,
-                                mrc_N2_p3, mrc_N2_p4, ang=angle_spacing, alpha=alpha, TopN=topN,
-                                vave=vave, vstd=vstd, pave=pave, pstd=pstd, showPDB=showPDB,
+            search_map_fft_prob(mrc_N1, mrc_N2,
+                                mrc_N1_p1, mrc_N1_p2, mrc_N1_p3, mrc_N1_p4,
+                                mrc_N2_p1, mrc_N2_p2, mrc_N2_p3, mrc_N2_p4,
+                                ang=angle_spacing, alpha=alpha, TopN=topN,
+                                vave=vave, vstd=vstd, pave=pave, pstd=pstd,
+                                showPDB=showPDB,
                                 folder=folder)

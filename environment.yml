@@ -14,5 +14,7 @@ dependencies:
   - pyFFTW
   - scipy
   - tqdm
-  - biopython
   - scikit-learn
+  - pip:
+      - biopython
+      - BioTEMPy

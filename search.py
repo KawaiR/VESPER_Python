@@ -8,16 +8,20 @@ from pathlib import Path
 import mrcfile
 import pyfftw
 from tqdm import tqdm
+
 from sklearn.cluster import DBSCAN
 from scipy.ndimage import center_of_mass
 
+from Bio.PDB import PDBParser, MMCIFParser
+from Bio.PDB.PDBIO import PDBIO
+
 from utils import *
-from utils import (
-    gpu_rot_and_search_fft,
-    find_best_trans_list,
-    format_score_result,
-    find_best_trans_mixed,
-)
+# from utils import (
+#     gpu_rot_and_search_fft,
+#     find_best_trans_list,
+#     format_score_result,
+#     find_best_trans_mixed,
+# )
 
 pyfftw.config.PLANNER_EFFORT = "FFTW_MEASURE"
 pyfftw.config.NUM_THREADS = max(
@@ -55,7 +59,8 @@ class MrcObj:
         self.orig = np.array([header.origin.x, header.origin.y, header.origin.z])
 
         # swap the xz axes of density data array and store in self.data
-        self.data = np.swapaxes(copy.deepcopy(data), 0, 2)
+        # also convert the data type to float32
+        self.data = np.swapaxes(copy.deepcopy(data), 0, 2).astype(np.float32)
 
         # create 1d representation of the density value by flattening the data array
         self.dens = data.flatten()
@@ -208,6 +213,8 @@ def search_map_fft(
     ldp_path=None,
     backbone_path=None,
     input_pdb=None,
+    input_mrc=None,
+    frefine=False,
 ):
     """The main search function for fining the best superimposition for the target and the query map.
 
@@ -621,28 +628,6 @@ def search_map_fft(
         # TODO: fix vec and data here
         refined_list = sorted_top_n
 
-    # calculate LDP recall score for refined results
-    # if ldp_recalL_mode:
-    #     for result_item in refined_list:
-    #         r = R.from_euler("xyz", result_item["angle"], degrees=True)
-    #         rot_mtx = r.inv().as_matrix()
-    #         rot_mtx = torch.from_numpy(rot_mtx).to(device)
-    #         real_trans = convert_trans(
-    #             mrc_target.cent,
-    #             mrc_search.cent,
-    #             r,
-    #             result_item["vec_trans"],
-    #             mrc_search.xwidth,
-    #             mrc_search.xdim,
-    #         )
-    #         result_item["ldp_recall"] = calc_ldp_recall_score(
-    #             ldp_atoms,
-    #             backbone_ca,
-    #             rot_mtx,
-    #             torch.from_numpy(np.array(real_trans)).to(device),
-    #             device,
-    #         )
-
     # Write result to PDB files
     if showPDB or input_pdb:
         if folder is not None:
@@ -656,11 +641,14 @@ def search_map_fft(
         os.makedirs(folder_path, exist_ok=True)
         print("Output Folder:", os.path.abspath(folder_path))
         if showPDB:
-            print("\n###Writing vector results to PDB files###")
+            print("###Writing vector results to PDB files###")
             os.makedirs(os.path.join(folder_path, "VEC"), exist_ok=True)
         if input_pdb:
-            print("\n###Writing transformed PDB files###")
+            print("###Writing transformed PDB files###")
             os.makedirs(os.path.join(folder_path, "PDB"), exist_ok=True)
+        if input_mrc:
+            print("###Writing transformed MRC files###")
+            os.makedirs(os.path.join(folder_path, "MRC"), exist_ok=True)
     else:
         print()
 
@@ -699,8 +687,22 @@ def search_map_fft(
         if ldp_recalL_mode:
             print(f"LDP Recall Score: {result_mrc['ldp_recall']}")
 
+        rot_mtx = R.from_euler("xyz", result_mrc["angle"], degrees=True).inv().as_matrix()
+        true_trans = convert_trans(
+            mrc_target.cent,
+            mrc_search.cent,
+            r,
+            result_mrc["vec_trans"],
+            mrc_search.xwidth,
+            mrc_search.xdim,
+        )
+
+        angle_str = f"rx{int(result_mrc['angle'][0])}_ry{int(result_mrc['angle'][1])}_rz{int(result_mrc['angle'][2])}"
+        trans_str = f"tx{true_trans[0]:.3f}_ty{true_trans[1]:.3f}_tz{true_trans[2]:.3f}"
+
+        # output stuff
         if showPDB:
-            save_pdb(
+            save_vec_as_pdb(
                 mrc_target.orig,
                 result_mrc["vec"],
                 result_mrc["data"],
@@ -713,22 +715,10 @@ def search_map_fft(
                 os.path.join(folder_path, "VEC"),
                 i,
             )
+        if input_mrc:
+            file_name = f"#{i}_{angle_str}_{trans_str}.mrc"
+            save_rotated_mrc(input_mrc, os.path.join(folder_path, "MRC", file_name), result_mrc["angle"], true_trans)
         if input_pdb:
-            rot_mtx = (
-                R.from_euler("xyz", result_mrc["angle"], degrees=True).inv().as_matrix()
-            )
-            angle_str = f"rx{int(result_mrc['angle'][0])}_ry{int(result_mrc['angle'][1])}_rz{int(result_mrc['angle'][2])}"
-            true_trans = convert_trans(
-                mrc_target.cent,
-                mrc_search.cent,
-                r,
-                result_mrc["vec_trans"],
-                mrc_search.xwidth,
-                mrc_search.xdim,
-            )
-            trans_str = (
-                f"tx{true_trans[0]:.3f}_ty{true_trans[1]:.3f}_tz{true_trans[2]:.3f}"
-            )
             file_name = f"#{i}_{angle_str}_{trans_str}.pdb"
             pdbio = PDBIO()
             if input_pdb.split(".")[-1] == "pdb":
@@ -1186,7 +1176,7 @@ def search_map_fft_prob(
         )
 
         if showPDB:
-            save_pdb(
+            save_vec_as_pdb(
                 mrc_target.orig,
                 result_mrc["vec"],
                 result_mrc["data"],
@@ -1201,7 +1191,7 @@ def search_map_fft_prob(
 
     for i, result_mrc in enumerate(refined_list_cluster):
         if showPDB:
-            save_pdb(
+            save_vec_as_pdb(
                 mrc_target.orig,
                 result_mrc["vec"],
                 result_mrc["data"],

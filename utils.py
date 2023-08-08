@@ -6,8 +6,8 @@ import numpy as np
 import torch
 from scipy.spatial.transform import Rotation as R
 
-from Bio.PDB import PDBParser, MMCIFParser
-from Bio.PDB.PDBIO import PDBIO
+from TEMPy.maps.map_parser import MapParser
+import TEMPy.math.vector as Vector
 
 interp = None
 
@@ -52,6 +52,8 @@ def mrc_set_vox_size(mrc, thr=0.00, voxel_size=7.0):
     tmp_size = 2 * dmax * mrc.xwidth / voxel_size
 
     # get the best size suitable for fft operation
+    # from pyfftw import pyfftw
+    #
     # new_xdim = pyfftw.next_fast_len(int(tmp_size))
 
     a = 2
@@ -656,7 +658,7 @@ def laplacian_filter(arr):
     return new_arr
 
 
-def save_pdb(
+def save_vec_as_pdb(
     origin,
     sampled_mrc_vec,
     sampled_mrc_data,
@@ -675,15 +677,6 @@ def save_pdb(
         filename = "C_{:1d}-S_{:.3f}.pdb".format(rank, score).replace(" ", "_")
     else:
         filename = "R_{:02d}-S_{:.3f}.pdb".format(rank, score).replace(" ", "_")
-    # filename = "M_{:02d}-S_{:>7.3f}-A_{:>5.1f}_{:>5.1f}_{:>5.1f}-T_{:>3.0f}_{:>3.0f}_{:>3.0f}.pdb".format(
-    #     rank,
-    #     score,
-    #     angle[0],
-    #     angle[1],
-    #     angle[2],
-    #     trans[0],
-    #     trans[1],
-    #     trans[2]).replace(" ", "_")
 
     filepath = os.path.join(folder_path, filename)
 
@@ -708,8 +701,8 @@ def save_pdb(
         tmp = idx * sample_width + add
         atom_header = "ATOM{:>7d}  CA  ALA{:>6d}    ".format(natm, nres)
         atom_content = "{:8.3f}{:8.3f}{:8.3f}{:6.2f}{:6.2f}".format(
-                            tmp[0], tmp[1], tmp[2], 1.0, score_arr[idx[0], idx[1], idx[2]]
-                        )
+            tmp[0], tmp[1], tmp[2], 1.0, score_arr[idx[0], idx[1], idx[2]]
+        )
         pdb_file.write(atom_header + atom_content + "\n")
         natm += 1
 
@@ -721,31 +714,6 @@ def save_pdb(
         pdb_file.write(atom_header + atom_content + "\n")
         natm += 1
         nres += 1
-
-
-    # for x in range(dim):
-    #     for y in range(dim):
-    #         for z in range(dim):
-    #
-    #             if sampled_mrc_data[x][y][z] != 0.0:
-    #                 tmp = np.array([x, y, z])
-    #                 tmp = tmp * sample_width + add
-    #                 atom_header = "ATOM{:>7d}  CA  ALA{:>6d}    ".format(natm, nres)
-    #                 atom_content = "{:8.3f}{:8.3f}{:8.3f}{:6.2f}{:6.2f}".format(
-    #                     tmp[0], tmp[1], tmp[2], 1.0, score_arr[x][y][z]
-    #                 )
-    #                 pdb_file.write(atom_header + atom_content + "\n")
-    #                 natm += 1
-    #
-    #                 tmp = np.array([x, y, z])
-    #                 tmp = (tmp + sampled_mrc_vec[x][y][z]) * sample_width + add
-    #                 atom_header = "ATOM{:>7d}  CB  ALA{:>6d}    ".format(natm, nres)
-    #                 atom_content = "{:8.3f}{:8.3f}{:8.3f}{:6.2f}{:6.2f}".format(
-    #                     tmp[0], tmp[1], tmp[2], 1.0, score_arr[x][y][z]
-    #                 )
-    #                 pdb_file.write(atom_header + atom_content + "\n")
-    #                 natm += 1
-    #                 nres += 1
 
 
 # @numba.jit(forceobj=True)
@@ -1159,6 +1127,7 @@ def calc_angle_comb(ang_interval):
 
 
 def convert_trans(cen1, cen2, r, trans, xwidth2, dim):
+    # convert translation in search space to translation in real space
 
     trans = np.array(trans)
 
@@ -1175,6 +1144,8 @@ def convert_trans(cen1, cen2, r, trans, xwidth2, dim):
 
 
 def gpu_rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, new_pos_grid, device):
+
+    # move everything to GPU
     orig_mrc_data = torch.from_numpy(orig_mrc_data).to(device)
     orig_mrc_vec = torch.from_numpy(orig_mrc_vec).to(device)
     new_pos_grid = torch.from_numpy(new_pos_grid).to(device)
@@ -1192,9 +1163,10 @@ def gpu_rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, new_pos_grid, device):
     # old_pos = np.einsum("ij, kj->ki", mtx.T, new_pos) + cent
     old_pos = new_pos @ mtx + 0.5 * float(dim)
 
+    # round old positions to nearest integer
+    old_pos = torch.round(old_pos)
+
     # init new vec and dens array
-    # new_vec_array = np.zeros_like(orig_mrc_vec)
-    # new_data_array = np.zeros_like(orig_mrc_data)
     new_vec_array = torch.zeros_like(orig_mrc_vec)
     new_data_array = torch.zeros_like(orig_mrc_data)
 
@@ -1480,13 +1452,16 @@ def gpu_rot_mrc_prob(
 
     return new_vec_array, new_data_array, new_p1, new_p2, new_p3, new_p4
 
-def calc_ldp_recall_score(ldp_arr, ca_arr, rot_mtx, trans, device):
-    # move translation vector to GPU
-    # trans_vec = torch.from_numpy(np.array(trans)).to(device)
 
-    # rotation matrix
-    # rot_mtx = R.from_euler("xyz", ang, degrees=True).inv().as_matrix()
-    # rot_mtx = torch.from_numpy(rot_mtx).to(device)
+def calc_ldp_recall_score(ldp_arr, ca_arr, rot_mtx, trans, device):
+    """
+    Calculate the recall score of LDP points given a rotation matrix and translation vector
+    All arguments have to be torch tensors on GPU
+    # ldp_arr: torch tensor of shape (N, 3)
+    # ca_arr: torch tensor of shape (N, 3)
+    # rot_mtx: torch tensor of shape (3, 3)
+    # trans: torch tensor of shape (3, )
+    """
 
     # rotated backbone CA
     rot_backbone_ca = torch.matmul(ca_arr, rot_mtx) + trans
@@ -1497,9 +1472,26 @@ def calc_ldp_recall_score(ldp_arr, ca_arr, rot_mtx, trans, device):
     # get distance from the closest LDP point for each CA atom
     min_dist = torch.min(dist_mtx, dim=1).values
 
-    # count the coverage
+    # count the coverage of CA atoms within 3.0 angstrom of LDP points
     num_ca = torch.sum(min_dist < 3.0)
     num_ca = num_ca.cpu().numpy()
 
     # normalized by the total amount of CA atoms
     return num_ca / len(rot_backbone_ca)
+
+
+def save_rotated_mrc(mrc_path, save_path, rot, trans):
+    """
+    Rotate and translate a mrc file and save it to a new file
+    mrc_path: path to the mrc file
+    save_path: path to save the rotated mrc file
+    rot: rotation angles in degree
+    """
+
+    map = MapParser.readMRC(mrc_path)
+    center = Vector.Vector(0, 0, 0)
+    map = map.map_rotate_by_axis_angle(1, 0, 0, rot[0], center)
+    map = map.map_rotate_by_axis_angle(0, 1, 0, rot[1], center)
+    map = map.map_rotate_by_axis_angle(0, 0, 1, rot[2], center)
+    map = map.translate(trans[0], trans[1], trans[2])
+    map.write_to_MRC_file(save_path)
