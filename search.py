@@ -3,6 +3,7 @@
 import multiprocessing
 import os
 from datetime import datetime
+from itertools import product
 from pathlib import Path
 
 import mrcfile
@@ -443,7 +444,7 @@ def search_map_fft(
         ang_range = n_angles_apart * int(ang)
         ang_range = int(ang_range)
 
-        for i, result_mrc in tqdm(enumerate(angle_score), desc="Removing Duplicates"):
+        for result_mrc in tqdm(angle_score, desc="Removing Duplicates"):
             # duplicate removal
             if tuple(result_mrc["angle"]) in hash_angs.keys():
                 # print(f"Duplicate: {result_mrc['angle']}")
@@ -525,34 +526,35 @@ def search_map_fft(
     if ang > 5.0:
         print("###Start Refining###")
         refined_list = []
-        for result_mrc in sorted_top_n:
+        for result_mrc in tqdm(sorted_top_n, desc="Refining Top N", position=0):
             refined_score = []
             ang = result_mrc["angle"]
 
-            ang_list = np.array(
-                np.meshgrid(
-                    [ang[0] - 5, ang[0], ang[0] + 5],
-                    [ang[1] - 5, ang[1], ang[1] + 5],
-                    [ang[2] - 5, ang[2], ang[2] + 5],
-                )
-            ).T.reshape(-1, 3)
+            # ang_list = np.array(
+            #     np.meshgrid(
+            #         [ang[0] - 5, ang[0], ang[0] + 5],
+            #         [ang[1] - 5, ang[1], ang[1] + 5],
+            #         [ang[2] - 5, ang[2], ang[2] + 5],
+            #     )
+            # ).T.reshape(-1, 3)
 
-            # x_list = range(int(ang[0]) - 5, int(ang[0]) + 6)
-            # y_list = range(int(ang[1]) - 5, int(ang[1]) + 6)
-            # z_list = range(int(ang[2]) - 5, int(ang[2]) + 6)
-            #
-            # ang_list = np.array(list(product(x_list, y_list, z_list)))
+            # 2 degrees interval refinement
+            x_list = range(int(ang[0]) - 5, int(ang[0]) + 6, 2)
+            y_list = range(int(ang[1]) - 5, int(ang[1]) + 6, 2)
+            z_list = range(int(ang[2]) - 5, int(ang[2]) + 6, 2)
 
-            # # remove duplicates
-            # ang_list = ang_list[
-            #     (ang_list[:, 0] < 360) & (ang_list[:, 1] < 360) & (ang_list[:, 2] < 180)
-            # ]
+            ang_list = np.array(list(product(x_list, y_list, z_list)))
+
+            # remove duplicates
+            ang_list = ang_list[
+                (ang_list[:, 0] < 360) & (ang_list[:, 1] < 360) & (ang_list[:, 2] < 180)
+            ]
 
             # make sure the angles are in the range of 0-360
             ang_list[ang_list < 0] += 360
             ang_list[ang_list > 360] -= 360
 
-            for angle in tqdm(ang_list, desc="Refining Rotations"):
+            for angle in tqdm(ang_list, position=1, leave=False):
                 if gpu:
                     vec_score, vec_trans, new_vec, new_data = gpu_rot_and_search_fft(
                         mrc_search.data,
@@ -653,8 +655,7 @@ def search_map_fft(
         print()
 
     for i, result_mrc in enumerate(refined_list):
-        euler = result_mrc["angle"]
-        r = R.from_euler("xyz", euler, degrees=True)
+        r = R.from_euler("xyz", result_mrc["angle"], degrees=True)
         new_trans = convert_trans(
             mrc_target.cent,
             mrc_search.cent,
