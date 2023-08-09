@@ -1,175 +1,181 @@
 import argparse
+from enum import Enum
 
 from search import *
-from utils import mrc_set_vox_size, fastVEC
-import utils
+from utils import mrc_set_vox_size, resample_and_vec
 
 
-def alpha_is_zero(objA, objB, threshold1, threshold2, bandwidth, voxel_spacing, angle_spacing, topN, showPDB, modeVal,
-                  evalMode):
-    # construct mrc objects
-    mrc1 = MrcObj(objA)
-    mrc2 = MrcObj(objB)
+class Mode(Enum):
+    V = "VecProduct"
+    O = "Overlap"
+    C = "CC"
+    P = "PCC"
+    L = "Laplacian"
 
-    # set voxel size
-    mrc1, tgt_map_resampled = mrc_set_vox_size(mrc1, threshold1, voxel_spacing)
-    mrc2, input_map_resampled = mrc_set_vox_size(mrc2, threshold2, voxel_spacing)
 
-    if tgt_map_resampled.xdim > input_map_resampled.xdim:
-        dim = input_map_resampled.xdim = input_map_resampled.ydim = input_map_resampled.zdim = tgt_map_resampled.xdim
-
-        input_map_resampled.orig[0] = input_map_resampled.cent[0] - 0.5 * voxel_spacing * input_map_resampled.xdim
-        input_map_resampled.orig[1] = input_map_resampled.cent[1] - 0.5 * voxel_spacing * input_map_resampled.xdim
-        input_map_resampled.orig[2] = input_map_resampled.cent[2] - 0.5 * voxel_spacing * input_map_resampled.xdim
-
-    else:
-        dim = tgt_map_resampled.xdim = tgt_map_resampled.ydim = tgt_map_resampled.zdim = input_map_resampled.xdim
-
-        tgt_map_resampled.orig[0] = tgt_map_resampled.cent[0] - 0.5 * voxel_spacing * tgt_map_resampled.xdim
-        tgt_map_resampled.orig[1] = tgt_map_resampled.cent[1] - 0.5 * voxel_spacing * tgt_map_resampled.xdim
-        tgt_map_resampled.orig[2] = tgt_map_resampled.cent[2] - 0.5 * voxel_spacing * tgt_map_resampled.xdim
-
-    tgt_map_resampled.dens = np.zeros((dim ** 3, 1), dtype="float32")
-    tgt_map_resampled.vec = np.zeros((dim, dim, dim, 3), dtype="float32")
-    tgt_map_resampled.data = np.zeros((dim, dim, dim), dtype="float32")
-
-    input_map_resampled.dens = np.zeros((dim ** 3, 1), dtype="float32")
-    input_map_resampled.vec = np.zeros((dim, dim, dim, 3), dtype="float32")
-    input_map_resampled.data = np.zeros((dim, dim, dim), dtype="float32")
-
-    # fastVEC
-    tgt_map_resampled = fastVEC(mrc1, tgt_map_resampled, bandwidth)
-    input_map_resampled = fastVEC(mrc2, input_map_resampled, bandwidth)
-
-    # search map
-    if modeVal == 'V':
-        modeVal = "VecProduct"
-    elif modeVal == 'O':
-        modeVal = "Overlap"
-    elif modeVal == 'C':
-        modeVal = "CC"
-    elif modeVal == 'P':
-        modeVal = "PCC"
-    elif modeVal == 'L':
-        modeVal = "Laplacian"
-
-    search_map_fft(tgt_map_resampled, input_map_resampled, TopN=topN, ang=angle_spacing, mode=modeVal,
-                   is_eval_mode=evalMode, showPDB=showPDB, folder=folder)
+# def alpha_is_zero(
+#     obj_a, obj_b, threshold1, threshold2, bandwidth, voxel_spacing, angle_spacing, topN, showPDB, modeVal, evalMode
+# ):
+#     # construct mrc objects
+#     ref_map = MrcObj(obj_a)
+#     tgt_map = MrcObj(obj_b)
+#
+#     # set voxel size and unify dimensions
+#     ref_map, ref_map_resampled = mrc_set_vox_size(ref_map, threshold1, voxel_spacing)
+#     tgt_map, tgt_map_resampled = mrc_set_vox_size(tgt_map, threshold2, voxel_spacing)
+#
+#     if ref_map_resampled.xdim > tgt_map_resampled.xdim:
+#         dim = tgt_map_resampled.xdim = tgt_map_resampled.ydim = tgt_map_resampled.zdim = ref_map_resampled.xdim
+#
+#         tgt_map_resampled.orig[0] = tgt_map_resampled.cent[0] - 0.5 * voxel_spacing * tgt_map_resampled.xdim
+#         tgt_map_resampled.orig[1] = tgt_map_resampled.cent[1] - 0.5 * voxel_spacing * tgt_map_resampled.xdim
+#         tgt_map_resampled.orig[2] = tgt_map_resampled.cent[2] - 0.5 * voxel_spacing * tgt_map_resampled.xdim
+#
+#     else:
+#         dim = ref_map_resampled.xdim = ref_map_resampled.ydim = ref_map_resampled.zdim = tgt_map_resampled.xdim
+#
+#         ref_map_resampled.orig[0] = ref_map_resampled.cent[0] - 0.5 * voxel_spacing * ref_map_resampled.xdim
+#         ref_map_resampled.orig[1] = ref_map_resampled.cent[1] - 0.5 * voxel_spacing * ref_map_resampled.xdim
+#         ref_map_resampled.orig[2] = ref_map_resampled.cent[2] - 0.5 * voxel_spacing * ref_map_resampled.xdim
+#
+#     ref_map_resampled.dens = np.zeros((dim**3, 1), dtype="float32")
+#     ref_map_resampled.vec = np.zeros((dim, dim, dim, 3), dtype="float32")
+#     ref_map_resampled.data = np.zeros((dim, dim, dim), dtype="float32")
+#
+#     tgt_map_resampled.dens = np.zeros((dim**3, 1), dtype="float32")
+#     tgt_map_resampled.vec = np.zeros((dim, dim, dim, 3), dtype="float32")
+#     tgt_map_resampled.data = np.zeros((dim, dim, dim), dtype="float32")
+#
+#     # perform resampling and vector calculation
+#     ref_map_resampled = resample_and_vec(ref_map, ref_map_resampled, bandwidth)
+#     tgt_map_resampled = resample_and_vec(tgt_map, tgt_map_resampled, bandwidth)
+#
+#     # search map
+#     if modeVal == "V":
+#         modeVal = "VecProduct"
+#     elif modeVal == "O":
+#         modeVal = "Overlap"
+#     elif modeVal == "C":
+#         modeVal = "CC"
+#     elif modeVal == "P":
+#         modeVal = "PCC"
+#     elif modeVal == "L":
+#         modeVal = "Laplacian"
+#
+#     search_map_fft(
+#         ref_map_resampled,
+#         tgt_map_resampled,
+#         TopN=topN,
+#         ang=angle_spacing,
+#         mode=modeVal,
+#         is_eval_mode=evalMode,
+#         showPDB=showPDB,
+#         folder=folder,
+#     )
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    subparser = parser.add_subparsers(dest='command')
+    subparser = parser.add_subparsers(dest="command")
 
-    orig = subparser.add_parser('orig')
-    prob = subparser.add_parser('prob')
+    orig = subparser.add_parser("orig")
+    prob = subparser.add_parser("prob")
 
     # original VESPER menu
-    orig.add_argument('-a', type=str, required=True, help='MAP1.mrc (large)')
-    orig.add_argument('-b', type=str, required=True, help='MAP2.mrc (small)')
-    orig.add_argument('-t', type=float, default=0.0, help='Threshold of density map1')
-    orig.add_argument('-T', type=float, default=0.0, help='Threshold of density map2')
-    orig.add_argument('-g', type=float, default=16.0,
-                      help='Bandwidth of the Gaussian filter def=16.0, sigma = 0.5*[value entered]')
-    orig.add_argument('-s', type=float, default=7.0, help='Sampling voxel spacing def=7.0')
-    orig.add_argument('-A', type=float, default=30.0, help='Sampling angle spacing def=30.0')
-    orig.add_argument('-N', type=int, default=10, help='Refine Top [int] models def=10')
-    orig.add_argument('-S', action='store_true', default=False, help='Show topN models in PDB format def=false')
-    orig.add_argument('-M', type=str, default='V', help='V: vector product mode (default)\n' +
-                                                        'O: overlap mode\n' +
-                                                        'C: Cross Correlation Coefficient Mode\n' +
-                                                        'P: Pearson Correlation Coefficient Mode\n' +
-                                                        'L: Laplacian Filtering Mode')
-    orig.add_argument('-E', type=bool, default=False, help='Evaluation mode of the current position def=false')
-    orig.add_argument('-o', type=str, default=None, help='Output folder name')
-    orig.add_argument('-I', type=str, default=None, help='Interpolation mode def=None')
-    orig.add_argument('-gpu', type=int, help='GPU ID to use for CUDA acceleration def=0')
-    orig.add_argument('-nodup', action='store_true', default=False, help='Remove duplicate models using heuristics '
-                                                                         'def=false')
-    orig.add_argument('-ldp', type=str, default=None, help='Path to the local dense point file def=None')
-    orig.add_argument('-ca', type=str, default=None, help='Path to the CA file def=None')
-    orig.add_argument('-pdbin', type=str, default=None, help='Input PDB file to be transformed def=None')
-    orig.add_argument('-mrcout', action='store_true', default=False, help='Output the transformed query map def=false')
-    orig.add_argument('-fref', action='store_true', default=False, help='Use finer angular sampling for refinement '
-                                                                        'def=false')
+    orig.add_argument("-a", type=str, required=True, help="MAP1.mrc (large)")
+    orig.add_argument("-b", type=str, required=True, help="MAP2.mrc (small)")
+    orig.add_argument("-t", type=float, default=0.0, help="Threshold of density map1")
+    orig.add_argument("-T", type=float, default=0.0, help="Threshold of density map2")
+    orig.add_argument(
+        "-g", type=float, default=16.0, help="Bandwidth of the Gaussian filter def=16.0, sigma = 0.5*[value entered]"
+    )
+    orig.add_argument("-s", type=float, default=7.0, help="Sampling voxel spacing def=7.0")
+    orig.add_argument("-A", type=float, default=30.0, help="Sampling angle spacing def=30.0")
+    orig.add_argument("-N", type=int, default=10, help="Refine Top [int] models def=10")
+    orig.add_argument("-S", action="store_true", default=False, help="Show topN models in PDB format def=false")
+    orig.add_argument(
+        "-M",
+        type=str,
+        default="V",
+        help="V: vector product mode (default)\n"
+        + "O: overlap mode\n"
+        + "C: Cross Correlation Coefficient Mode\n"
+        + "P: Pearson Correlation Coefficient Mode\n"
+        + "L: Laplacian Filtering Mode",
+    )
+    orig.add_argument("-E", type=bool, default=False, help="Evaluation mode of the current position def=false")
+    orig.add_argument("-o", type=str, default=None, help="Output folder name")
+    orig.add_argument("-I", type=str, default=None, help="Interpolation mode def=None")
+    orig.add_argument("-gpu", type=int, help="GPU ID to use for CUDA acceleration def=0")
+    orig.add_argument("-nodup", action="store_true", default=False, help="Remove duplicate models using heuristics " "def=false")
+    orig.add_argument("-ldp", type=str, default=None, help="Path to the local dense point file def=None")
+    orig.add_argument("-ca", type=str, default=None, help="Path to the CA file def=None")
+    orig.add_argument("-pdbin", type=str, default=None, help="Input PDB file to be transformed def=None")
+    orig.add_argument("-mrcout", action="store_true", default=False, help="Output the transformed query map def=false")
 
     # secondary structure matching menu
-    prob.add_argument('-a', type=str, required=True, help='MAP1.mrc (large)')
-    prob.add_argument('-npa', type=str, required=True, help='numpy array for Predictions for map 1')
-    prob.add_argument('-b', type=str, required=True, help='MAP2.mrc (small)')
-    prob.add_argument('-npb', type=str, required=True, help='numpy array for Predictions for map 2')
-    prob.add_argument('-alpha', type=float, default=0.5, required=False, help='The weighting parameter for alpha '
-                                                                              'mixing def=0.0')
-    prob.add_argument('-t', type=float, default=0.0, help='Threshold of density map1')
-    prob.add_argument('-T', type=float, default=0.0, help='Threshold of density map2')
-    prob.add_argument('-g', type=float, default=16.0,
-                      help='Bandwidth of the Gaussian filter def=16.0, sigma = 0.5*[value entered]')
-    prob.add_argument('-s', type=float, default=7.0, help='Sampling voxel spacing def=7.0')
-    prob.add_argument('-A', type=float, default=30.0, help='Sampling angle spacing def=30.0')
-    prob.add_argument('-N', type=int, default=10, help='Refine Top [int] models def=10')
-    prob.add_argument('-S', action='store_true', default=False, help='Show topN models in PDB format def=false')
-    prob.add_argument('-M', type=str, default='V', help='V: vector product mode (default)\n' +
-                                                        'O: overlap mode\n' +
-                                                        'C: Cross Correlation Coefficient Mode\n' +
-                                                        'P: Pearson Correlation Coefficient Mode\n' +
-                                                        'L: Laplacian Filtering Mode')
-    prob.add_argument('-E', type=bool, default=False, help='Evaluation mode of the current position def=false')
-    prob.add_argument('-P', type=int, default=4, help='Number of processors to use def=4')
-    prob.add_argument('-vav', type=float, help='Pre-computed average for density map')
-    prob.add_argument('-vstd', type=float, help='Pre-computed standard deviation for density map')
-    prob.add_argument('-pav', type=float, help='Pre-computed average for probability map')
-    prob.add_argument('-pstd', type=float, help='Pre-computed standard deviation for probability map')
-    prob.add_argument('-o', type=str, default=None, help='Output folder name')
-    prob.add_argument('-I', type=str, default=None, help='Interpolation mode def=None')
-    prob.add_argument('-B', type=float, default=8.0,
-                      help='Bandwidth of the Gaussian filter for probability values def=8.0')
-    prob.add_argument('-R', type=float, default=0.0, help='Threshold for probability values def=0.0')
-    prob.add_argument('-gpu', type=int, help='GPU ID to use for CUDA acceleration def=0')
+    prob.add_argument("-a", type=str, required=True, help="MAP1.mrc (large)")
+    prob.add_argument("-npa", type=str, required=True, help="numpy array for Predictions for map 1")
+    prob.add_argument("-b", type=str, required=True, help="MAP2.mrc (small)")
+    prob.add_argument("-npb", type=str, required=True, help="numpy array for Predictions for map 2")
+    prob.add_argument(
+        "-alpha", type=float, default=0.5, required=False, help="The weighting parameter for alpha " "mixing def=0.0"
+    )
+    prob.add_argument("-t", type=float, default=0.0, help="Threshold of density map1")
+    prob.add_argument("-T", type=float, default=0.0, help="Threshold of density map2")
+    prob.add_argument(
+        "-g", type=float, default=16.0, help="Bandwidth of the Gaussian filter def=16.0, sigma = 0.5*[value entered]"
+    )
+    prob.add_argument("-s", type=float, default=7.0, help="Sampling voxel spacing def=7.0")
+    prob.add_argument("-A", type=float, default=30.0, help="Sampling angle spacing def=30.0")
+    prob.add_argument("-N", type=int, default=10, help="Refine Top [int] models def=10")
+    prob.add_argument("-S", action="store_true", default=False, help="Show topN models in PDB format def=false")
+    prob.add_argument(
+        "-M",
+        type=str,
+        default="V",
+        help="V: vector product mode (default)\n"
+        + "O: overlap mode\n"
+        + "C: Cross Correlation Coefficient Mode\n"
+        + "P: Pearson Correlation Coefficient Mode\n"
+        + "L: Laplacian Filtering Mode",
+    )
+    prob.add_argument("-E", type=bool, default=False, help="Evaluation mode of the current position def=false")
+    prob.add_argument("-P", type=int, default=4, help="Number of processors to use def=4")
+    prob.add_argument("-vav", type=float, help="Pre-computed average for density map")
+    prob.add_argument("-vstd", type=float, help="Pre-computed standard deviation for density map")
+    prob.add_argument("-pav", type=float, help="Pre-computed average for probability map")
+    prob.add_argument("-pstd", type=float, help="Pre-computed standard deviation for probability map")
+    prob.add_argument("-o", type=str, default=None, help="Output folder name")
+    prob.add_argument("-I", type=str, default=None, help="Interpolation mode def=None")
+    prob.add_argument("-B", type=float, default=8.0, help="Bandwidth of the Gaussian filter for probability values def=8.0")
+    prob.add_argument("-R", type=float, default=0.0, help="Threshold for probability values def=0.0")
+    prob.add_argument("-gpu", type=int, help="GPU ID to use for CUDA acceleration def=0")
 
     args = parser.parse_args()
 
     if not os.path.exists(args.a):
         print("Target map not found, please check -a option")
         exit(-1)
-    if not os.path.exists(args.a):
+    if not os.path.exists(args.b):
         print("Query map not found, please check -b option")
         exit(-1)
 
-    if args.command == 'orig':
-        # output folder
-        folder = args.o
+    if args.command == "orig":
 
-        # set interpolation mode
-        utils.interp = args.I
-
-        # mrc file paths
-        objA = args.a
-        objB = args.b
-
-        threshold1 = args.t
-        threshold2 = args.T
-
-        bandwidth = args.g
-        voxel_spacing = args.s
-        angle_spacing = args.A
-        topN = args.N
-
-        # Show vector representation
-        showPDB = args.S
-
-        modeVal = args.M
-        evalMode = args.E
+        vox_size = args.s
+        modeVal = Mode[args.M].value
 
         print("### Input Params Summary ###")
-        print("Target MAP: ", objA)
-        print("Search MAP: ", objB)
-        print("Threshold of Target MAP: ", threshold1)
-        print("Threshold of Search MAP: ", threshold2)
-        print("Bandwidth of the Gaussian filter: ", bandwidth)
-        print("Sampling voxel spacing: ", voxel_spacing)
-        print("Sampling angle spacing: ", angle_spacing)
-        print("Refine Top ", topN, " models")
-        print("Show topN models in PDB format: ", showPDB)
+        print("Reference Map Path: ", args.a)
+        print("Target Map Path: ", args.b)
+        print("Threshold of Reference Map: ", args.t)
+        print("Threshold of Target Map: ", args.T)
+        print("Bandwidth of the Gaussian filter: ", args.g)
+        print("Sampling voxel spacing: ", vox_size)
+        print("Sampling angle spacing: ", args.A)
+        print("Refine Top ", args.N, " models")
+        print("Show topN models in PDB format: ", args.S)
         print("Remove duplicates: ", args.nodup)
         print("Scoring mode: ", modeVal)
         if args.o:
@@ -189,57 +195,47 @@ if __name__ == "__main__":
             print("LDP Recall Reranking Disabled")
 
         # construct mrc objects
-        mrc1 = MrcObj(objA)
-        mrc2 = MrcObj(objB)
+        ref_map = MrcObj(args.a)
+        tgt_map = MrcObj(args.b)
 
         # set voxel size
-        mrc1, mrc_N1 = mrc_set_vox_size(mrc1, threshold1, voxel_spacing)
-        mrc2, mrc_N2 = mrc_set_vox_size(mrc2, threshold2, voxel_spacing)
+        ref_map, resampled_ref_map = mrc_set_vox_size(ref_map, args.t, vox_size)
+        tgt_map, resampled_tgt_map = mrc_set_vox_size(tgt_map, args.T, vox_size)
 
-        if mrc_N1.xdim > mrc_N2.xdim:
-            dim = mrc_N2.xdim = mrc_N2.ydim = mrc_N2.zdim = mrc_N1.xdim
+        if resampled_ref_map.xdim > resampled_tgt_map.xdim:
+            unified_dim = resampled_tgt_map.xdim = resampled_tgt_map.ydim = resampled_tgt_map.zdim = resampled_ref_map.xdim
 
-            mrc_N2.orig[0] = mrc_N2.cent[0] - 0.5 * voxel_spacing * mrc_N2.xdim
-            mrc_N2.orig[1] = mrc_N2.cent[1] - 0.5 * voxel_spacing * mrc_N2.xdim
-            mrc_N2.orig[2] = mrc_N2.cent[2] - 0.5 * voxel_spacing * mrc_N2.xdim
+            resampled_tgt_map.orig[0] = resampled_tgt_map.cent[0] - 0.5 * vox_size * resampled_tgt_map.xdim
+            resampled_tgt_map.orig[1] = resampled_tgt_map.cent[1] - 0.5 * vox_size * resampled_tgt_map.xdim
+            resampled_tgt_map.orig[2] = resampled_tgt_map.cent[2] - 0.5 * vox_size * resampled_tgt_map.xdim
 
         else:
-            dim = mrc_N1.xdim = mrc_N1.ydim = mrc_N1.zdim = mrc_N2.xdim
+            unified_dim = resampled_ref_map.xdim = resampled_ref_map.ydim = resampled_ref_map.zdim = resampled_tgt_map.xdim
 
-            mrc_N1.orig[0] = mrc_N1.cent[0] - 0.5 * voxel_spacing * mrc_N1.xdim
-            mrc_N1.orig[1] = mrc_N1.cent[1] - 0.5 * voxel_spacing * mrc_N1.xdim
-            mrc_N1.orig[2] = mrc_N1.cent[2] - 0.5 * voxel_spacing * mrc_N1.xdim
+            resampled_ref_map.orig[0] = resampled_ref_map.cent[0] - 0.5 * vox_size * resampled_ref_map.xdim
+            resampled_ref_map.orig[1] = resampled_ref_map.cent[1] - 0.5 * vox_size * resampled_ref_map.xdim
+            resampled_ref_map.orig[2] = resampled_ref_map.cent[2] - 0.5 * vox_size * resampled_ref_map.xdim
 
-        mrc_N1.dens = np.zeros((dim ** 3, 1), dtype="float32")
-        mrc_N1.vec = np.zeros((dim, dim, dim, 3), dtype="float32")
-        mrc_N1.data = np.zeros((dim, dim, dim), dtype="float32")
-        mrc_N2.dens = np.zeros((dim ** 3, 1), dtype="float32")
-        mrc_N2.vec = np.zeros((dim, dim, dim, 3), dtype="float32")
-        mrc_N2.data = np.zeros((dim, dim, dim), dtype="float32")
+        # init new dens, vec, data arrays
+        resampled_ref_map.dens = np.zeros((unified_dim**3, 1), dtype="float32")
+        resampled_ref_map.vec = np.zeros((unified_dim, unified_dim, unified_dim, 3), dtype="float32")
+        resampled_ref_map.data = np.zeros((unified_dim, unified_dim, unified_dim), dtype="float32")
+        resampled_tgt_map.dens = np.zeros((unified_dim**3, 1), dtype="float32")
+        resampled_tgt_map.vec = np.zeros((unified_dim, unified_dim, unified_dim, 3), dtype="float32")
+        resampled_tgt_map.data = np.zeros((unified_dim, unified_dim, unified_dim), dtype="float32")
 
-        # fastVEC
+        # resample_and_vec
         print("\n###Processing MAP1 Resampling###")
-        # mrc_N1 = fastVEC(mrc1, mrc_N1, dreso=bandwidth, density_map=mrc1.data)
-        mrc_N1 = fastVEC(mrc1, mrc_N1, dreso=bandwidth)
+        # mrc_N1 = resample_and_vec(mrc1, mrc_N1, dreso=bandwidth, density_map=mrc1.data)
+        resampled_ref_map = resample_and_vec(ref_map, resampled_ref_map, dreso=(args.g))
         print("\n###Processing MAP2 Resampling###")
         # start_time = time.time()
-        # mrc_N2 = fastVEC(mrc2, mrc_N2, dreso=bandwidth, density_map=mrc2.data)
-        mrc_N2 = fastVEC(mrc2, mrc_N2, dreso=bandwidth)
+        # mrc_N2 = resample_and_vec(mrc2, mrc_N2, dreso=bandwidth, density_map=mrc2.data)
+        resampled_tgt_map = resample_and_vec(tgt_map, resampled_tgt_map, dreso=(args.g))
         # print("--- %s seconds ---" % (time.time() - start_time))
         print()
 
-        # search map
-        if modeVal == 'V':
-            modeVal = "VecProduct"
-        elif modeVal == 'O':
-            modeVal = "Overlap"
-        elif modeVal == 'C':
-            modeVal = "CC"
-        elif modeVal == 'P':
-            modeVal = "PCC"
-        elif modeVal == 'L':
-            modeVal = "Laplacian"
-
+        # set GPU ID
         if args.gpu is not None:
             use_gpu = True
             gpu_id = args.gpu
@@ -247,28 +243,30 @@ if __name__ == "__main__":
             use_gpu = False
             gpu_id = -1
 
-        trans_mrc_path=None
-        if args.mrcout:
-            trans_mrc_path = args.b
+        # set mrc output path
+        trans_mrc_path = args.b if args.mrcout else None
 
-        search_map_fft(mrc_N1, mrc_N2,
-                       TopN=topN, ang=angle_spacing, mode=modeVal, is_eval_mode=evalMode,
-                       showPDB=showPDB, folder=folder,
-                       gpu=use_gpu, gpu_id=gpu_id,
-                       remove_dup=args.nodup,
-                       ldp_path=args.ldp,
-                       backbone_path=args.ca,
-                       input_pdb=args.pdbin,
-                       input_mrc=trans_mrc_path,
-                       frefine=args.fref,)
+        search_map_fft(
+            resampled_ref_map,
+            resampled_tgt_map,
+            TopN=args.N,
+            ang=args.A,
+            mode=modeVal,
+            is_eval_mode=args.E,
+            showPDB=args.S,
+            folder=args.o,
+            gpu=use_gpu,
+            gpu_id=gpu_id,
+            remove_dup=args.nodup,
+            ldp_path=args.ldp,
+            backbone_path=args.ca,
+            input_pdb=args.pdbin,
+            input_mrc=trans_mrc_path,
+        )
 
-
-    elif args.command == 'prob':
+    elif args.command == "prob":
         # output folder
         folder = args.o
-
-        # set interpolation mode
-        utils.interp = args.I
 
         # mrc file paths
         objA = args.a
@@ -293,7 +291,7 @@ if __name__ == "__main__":
 
         # with default
         bandwidth = args.g
-        voxel_spacing = args.s
+        vox_size = args.s
         angle_spacing = args.A
         topN = args.N
 
@@ -328,7 +326,7 @@ if __name__ == "__main__":
         print("Threshold of Target MAP: ", threshold1)
         print("Threshold of Search MAP: ", threshold2)
         print("Bandwidth of the Gaussian filter: ", bandwidth)
-        print("Sampling voxel spacing: ", voxel_spacing)
+        print("Sampling voxel spacing: ", vox_size)
         print("Sampling angle spacing: ", angle_spacing)
         print("Refine Top ", topN, " models")
         print("Show topN models in PDB format: ", showPDB)
@@ -336,113 +334,131 @@ if __name__ == "__main__":
         print("Bandwidth of the Gaussian filter for probability values: ", args.B)
         print("Threshold for probability values: ", args.R)
 
-        if alpha == 0.0:
-            alpha_is_zero(objA, objB,
-                          threshold1, threshold2,
-                          bandwidth,
-                          voxel_spacing,
-                          angle_spacing,
-                          topN,
-                          showPDB,
-                          modeVal,
-                          evalMode)
-        else:
-            # cast float64 to float32
-            prob_maps = np.load(npA).astype(np.float32)
-            prob_maps_chain = np.load(npB).astype(np.float32)
+        # if alpha == 0.0:
+        #     alpha_is_zero(
+        #         objA, objB, threshold1, threshold2, bandwidth, vox_size, angle_spacing, topN, showPDB, modeVal, evalMode
+        #     )
+        # else:
 
-            mrc1 = MrcObj(objA)
-            mrc2 = MrcObj(objB)
+        prob_maps = np.load(npA).astype(np.float32)
+        prob_maps_chain = np.load(npB).astype(np.float32)
 
-            # probability MRCs
-            mrc1_p1 = MrcObj(objA)
-            mrc1_p2 = MrcObj(objA)
-            mrc1_p3 = MrcObj(objA)
-            mrc1_p4 = MrcObj(objA)
+        ref_map = MrcObj(objA)
+        tgt_map = MrcObj(objB)
 
-            mrc2_p1 = MrcObj(objB)
-            mrc2_p2 = MrcObj(objB)
-            mrc2_p3 = MrcObj(objB)
-            mrc2_p4 = MrcObj(objB)
+        # probability MRCs
+        mrc1_p1 = MrcObj(objA)
+        mrc1_p2 = MrcObj(objA)
+        mrc1_p3 = MrcObj(objA)
+        mrc1_p4 = MrcObj(objA)
 
-            # fill in the data
-            mrc2_p1.data = np.swapaxes(prob_maps_chain[:, :, :, 0], 0, 2)
-            mrc2_p2.data = np.swapaxes(prob_maps_chain[:, :, :, 1], 0, 2)
-            mrc2_p3.data = np.swapaxes(prob_maps_chain[:, :, :, 2], 0, 2)
-            mrc2_p4.data = np.swapaxes(prob_maps_chain[:, :, :, 3], 0, 2)
+        mrc2_p1 = MrcObj(objB)
+        mrc2_p2 = MrcObj(objB)
+        mrc2_p3 = MrcObj(objB)
+        mrc2_p4 = MrcObj(objB)
 
-            mrc1_p1.data = np.swapaxes(prob_maps[:, :, :, 0], 0, 2)
-            mrc1_p2.data = np.swapaxes(prob_maps[:, :, :, 1], 0, 2)
-            mrc1_p3.data = np.swapaxes(prob_maps[:, :, :, 2], 0, 2)
-            mrc1_p4.data = np.swapaxes(prob_maps[:, :, :, 3], 0, 2)
+        # fill in the data
+        mrc2_p1.data = np.swapaxes(prob_maps_chain[:, :, :, 0], 0, 2)
+        mrc2_p2.data = np.swapaxes(prob_maps_chain[:, :, :, 1], 0, 2)
+        mrc2_p3.data = np.swapaxes(prob_maps_chain[:, :, :, 2], 0, 2)
+        mrc2_p4.data = np.swapaxes(prob_maps_chain[:, :, :, 3], 0, 2)
 
-            print("\n###Generating Params for Resampling Density Map 1###")
-            mrc1, mrc_N1 = mrc_set_vox_size(mrc1, threshold1, voxel_spacing)
+        mrc1_p1.data = np.swapaxes(prob_maps[:, :, :, 0], 0, 2)
+        mrc1_p2.data = np.swapaxes(prob_maps[:, :, :, 1], 0, 2)
+        mrc1_p3.data = np.swapaxes(prob_maps[:, :, :, 2], 0, 2)
+        mrc1_p4.data = np.swapaxes(prob_maps[:, :, :, 3], 0, 2)
 
-            print("\n###Generating Params for Resampling Density Map 2###")
-            mrc2, mrc_N2 = mrc_set_vox_size(mrc2, threshold2, voxel_spacing)
+        print("\n###Generating Params for Resampling Density Map 1###")
+        ref_map, resampled_ref_map = mrc_set_vox_size(ref_map, threshold1, vox_size)
 
-            print("\n###Generating Params for Resampling Probability Map 1###")
+        print("\n###Generating Params for Resampling Density Map 2###")
+        tgt_map, resampled_tgt_map = mrc_set_vox_size(tgt_map, threshold2, vox_size)
 
-            mrc1_p1, mrc_N1_p1 = mrc_set_vox_size(mrc1_p1, thr=args.R, voxel_size=voxel_spacing)
-            mrc1_p2, mrc_N1_p2 = mrc_set_vox_size(mrc1_p2, thr=args.R, voxel_size=voxel_spacing)
-            mrc1_p3, mrc_N1_p3 = mrc_set_vox_size(mrc1_p3, thr=args.R, voxel_size=voxel_spacing)
-            mrc1_p4, mrc_N1_p4 = mrc_set_vox_size(mrc1_p4, thr=args.R, voxel_size=voxel_spacing)
+        print("\n###Generating Params for Resampling Probability Map 1###")
 
-            print("\n###Generating Params for Resampling Probability Map 2###")
+        mrc1_p1, mrc_N1_p1 = mrc_set_vox_size(mrc1_p1, thr=args.R, voxel_size=vox_size)
+        mrc1_p2, mrc_N1_p2 = mrc_set_vox_size(mrc1_p2, thr=args.R, voxel_size=vox_size)
+        mrc1_p3, mrc_N1_p3 = mrc_set_vox_size(mrc1_p3, thr=args.R, voxel_size=vox_size)
+        mrc1_p4, mrc_N1_p4 = mrc_set_vox_size(mrc1_p4, thr=args.R, voxel_size=vox_size)
 
-            mrc2_p1, mrc_N2_p1 = mrc_set_vox_size(mrc2_p1, thr=args.R, voxel_size=voxel_spacing)
-            mrc2_p2, mrc_N2_p2 = mrc_set_vox_size(mrc2_p2, thr=args.R, voxel_size=voxel_spacing)
-            mrc2_p3, mrc_N2_p3 = mrc_set_vox_size(mrc2_p3, thr=args.R, voxel_size=voxel_spacing)
-            mrc2_p4, mrc_N2_p4 = mrc_set_vox_size(mrc2_p4, thr=args.R, voxel_size=voxel_spacing)
+        print("\n###Generating Params for Resampling Probability Map 2###")
 
-            mrc_list = [mrc_N1, mrc_N2, mrc_N1_p1, mrc_N1_p2, mrc_N1_p3, mrc_N1_p4, mrc_N2_p1, mrc_N2_p2, mrc_N2_p3,
-                        mrc_N2_p4]
-            max_dim = np.max([mrc.xdim for mrc in mrc_list])
+        mrc2_p1, mrc_N2_p1 = mrc_set_vox_size(mrc2_p1, thr=args.R, voxel_size=vox_size)
+        mrc2_p2, mrc_N2_p2 = mrc_set_vox_size(mrc2_p2, thr=args.R, voxel_size=vox_size)
+        mrc2_p3, mrc_N2_p3 = mrc_set_vox_size(mrc2_p3, thr=args.R, voxel_size=vox_size)
+        mrc2_p4, mrc_N2_p4 = mrc_set_vox_size(mrc2_p4, thr=args.R, voxel_size=vox_size)
 
-            # Unify dimensions in all maps
+        mrc_list = [
+            resampled_ref_map,
+            resampled_tgt_map,
+            mrc_N1_p1,
+            mrc_N1_p2,
+            mrc_N1_p3,
+            mrc_N1_p4,
+            mrc_N2_p1,
+            mrc_N2_p2,
+            mrc_N2_p3,
+            mrc_N2_p4,
+        ]
+        max_dim = np.max([mrc.xdim for mrc in mrc_list])
 
-            for mrc in mrc_list:
-                if mrc.xdim != max_dim:
-                    mrc.xdim = mrc.ydim = mrc.zdim = max_dim
-                    mrc.orig = mrc.cent - 0.5 * voxel_spacing * mrc.xdim
+        # Unify dimensions in all maps
 
-            for mrc in mrc_list:
-                mrc.dens = np.zeros((max_dim ** 3, 1), dtype="float32")
-                mrc.data = np.zeros((max_dim, max_dim, max_dim), dtype="float32")
-                mrc.vec = np.zeros((max_dim, max_dim, max_dim, 3), dtype="float32")
+        for mrc in mrc_list:
+            if mrc.xdim != max_dim:
+                mrc.xdim = mrc.ydim = mrc.zdim = max_dim
+                mrc.orig = mrc.cent - 0.5 * vox_size * mrc.xdim
 
-            # mrc_N1 = fastVEC(mrc1, mrc_N1, dreso=bandwidth)
-            # mrc_N1_p1 = fastVEC(mrc1_p1, mrc_N1_p1, dreso=bandwidth)
-            # mrc_N1_p2 = fastVEC(mrc1_p2, mrc_N1_p2, dreso=bandwidth)
-            # mrc_N1_p3 = fastVEC(mrc1_p3, mrc_N1_p3, dreso=bandwidth)
-            # mrc_N1_p4 = fastVEC(mrc1_p4, mrc_N1_p4, dreso=bandwidth)
-            #
-            # mrc_N2 = fastVEC(mrc2, mrc_N2, dreso=bandwidth)
-            # mrc_N2_p1 = fastVEC(mrc2_p1, mrc_N2_p1, dreso=bandwidth)
-            # mrc_N2_p2 = fastVEC(mrc2_p2, mrc_N2_p2, dreso=bandwidth)
-            # mrc_N2_p3 = fastVEC(mrc2_p3, mrc_N2_p3, dreso=bandwidth)
-            # mrc_N2_p4 = fastVEC(mrc2_p4, mrc_N2_p4, dreso=bandwidth)
+        for mrc in mrc_list:
+            mrc.dens = np.zeros((max_dim**3, 1), dtype="float32")
+            mrc.data = np.zeros((max_dim, max_dim, max_dim), dtype="float32")
+            mrc.vec = np.zeros((max_dim, max_dim, max_dim, 3), dtype="float32")
 
-            print("\n###Processing MAP1 Resampling###")
+        # mrc_N1 = resample_and_vec(mrc1, mrc_N1, dreso=bandwidth)
+        # mrc_N1_p1 = resample_and_vec(mrc1_p1, mrc_N1_p1, dreso=bandwidth)
+        # mrc_N1_p2 = resample_and_vec(mrc1_p2, mrc_N1_p2, dreso=bandwidth)
+        # mrc_N1_p3 = resample_and_vec(mrc1_p3, mrc_N1_p3, dreso=bandwidth)
+        # mrc_N1_p4 = resample_and_vec(mrc1_p4, mrc_N1_p4, dreso=bandwidth)
+        #
+        # mrc_N2 = resample_and_vec(mrc2, mrc_N2, dreso=bandwidth)
+        # mrc_N2_p1 = resample_and_vec(mrc2_p1, mrc_N2_p1, dreso=bandwidth)
+        # mrc_N2_p2 = resample_and_vec(mrc2_p2, mrc_N2_p2, dreso=bandwidth)
+        # mrc_N2_p3 = resample_and_vec(mrc2_p3, mrc_N2_p3, dreso=bandwidth)
+        # mrc_N2_p4 = resample_and_vec(mrc2_p4, mrc_N2_p4, dreso=bandwidth)
 
-            mrc_N1 = fastVEC(mrc1, mrc_N1, dreso=bandwidth)
-            mrc_N1_p1 = fastVEC(mrc1_p1, mrc_N1_p1, dreso=args.B, density_map=mrc1.data)
-            mrc_N1_p2 = fastVEC(mrc1_p2, mrc_N1_p2, dreso=args.B, density_map=mrc1.data)
-            mrc_N1_p3 = fastVEC(mrc1_p3, mrc_N1_p3, dreso=args.B, density_map=mrc1.data)
-            mrc_N1_p4 = fastVEC(mrc1_p4, mrc_N1_p4, dreso=args.B, density_map=mrc1.data)
+        print("\n###Processing MAP1 Resampling###")
 
-            print("\n###Processing MAP2 Resampling###")
-            mrc_N2 = fastVEC(mrc2, mrc_N2, dreso=bandwidth)
-            mrc_N2_p1 = fastVEC(mrc2_p1, mrc_N2_p1, dreso=args.B, density_map=mrc2.data)
-            mrc_N2_p2 = fastVEC(mrc2_p2, mrc_N2_p2, dreso=args.B, density_map=mrc2.data)
-            mrc_N2_p3 = fastVEC(mrc2_p3, mrc_N2_p3, dreso=args.B, density_map=mrc2.data)
-            mrc_N2_p4 = fastVEC(mrc2_p4, mrc_N2_p4, dreso=args.B, density_map=mrc2.data)
+        resampled_ref_map = resample_and_vec(ref_map, resampled_ref_map, dreso=bandwidth)
+        mrc_N1_p1 = resample_and_vec(mrc1_p1, mrc_N1_p1, dreso=args.B, density_map=ref_map.data)
+        mrc_N1_p2 = resample_and_vec(mrc1_p2, mrc_N1_p2, dreso=args.B, density_map=ref_map.data)
+        mrc_N1_p3 = resample_and_vec(mrc1_p3, mrc_N1_p3, dreso=args.B, density_map=ref_map.data)
+        mrc_N1_p4 = resample_and_vec(mrc1_p4, mrc_N1_p4, dreso=args.B, density_map=ref_map.data)
 
-            search_map_fft_prob(mrc_N1, mrc_N2,
-                                mrc_N1_p1, mrc_N1_p2, mrc_N1_p3, mrc_N1_p4,
-                                mrc_N2_p1, mrc_N2_p2, mrc_N2_p3, mrc_N2_p4,
-                                ang=angle_spacing, alpha=alpha, TopN=topN,
-                                vave=vave, vstd=vstd, pave=pave, pstd=pstd,
-                                showPDB=showPDB,
-                                folder=folder)
+        print("\n###Processing MAP2 Resampling###")
+        resampled_tgt_map = resample_and_vec(tgt_map, resampled_tgt_map, dreso=bandwidth)
+        mrc_N2_p1 = resample_and_vec(mrc2_p1, mrc_N2_p1, dreso=args.B, density_map=tgt_map.data)
+        mrc_N2_p2 = resample_and_vec(mrc2_p2, mrc_N2_p2, dreso=args.B, density_map=tgt_map.data)
+        mrc_N2_p3 = resample_and_vec(mrc2_p3, mrc_N2_p3, dreso=args.B, density_map=tgt_map.data)
+        mrc_N2_p4 = resample_and_vec(mrc2_p4, mrc_N2_p4, dreso=args.B, density_map=tgt_map.data)
+
+        search_map_fft_prob(
+            resampled_ref_map,
+            resampled_tgt_map,
+            mrc_N1_p1,
+            mrc_N1_p2,
+            mrc_N1_p3,
+            mrc_N1_p4,
+            mrc_N2_p1,
+            mrc_N2_p2,
+            mrc_N2_p3,
+            mrc_N2_p4,
+            ang=angle_spacing,
+            alpha=alpha,
+            TopN=topN,
+            vave=vave,
+            vstd=vstd,
+            pave=pave,
+            pstd=pstd,
+            showPDB=showPDB,
+            folder=folder,
+        )
