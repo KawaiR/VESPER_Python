@@ -1,3 +1,5 @@
+import copy
+
 import numpy as np
 
 
@@ -70,12 +72,8 @@ def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx):
     # non_zero_rot_list = old_pos[dens_mask].astype(np.int32)
 
     # get the non-zero vec and dens values
-    non_zero_vec = orig_mrc_vec[
-        non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]
-    ]
-    non_zero_dens = orig_mrc_data[
-        non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]
-    ]
+    non_zero_vec = orig_mrc_vec[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
+    non_zero_dens = orig_mrc_data[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
 
     # rotate the vectors
     new_vec = np.einsum("ij, kj->ki", mtx, non_zero_vec)
@@ -86,9 +84,7 @@ def rot_mrc(orig_mrc_data, orig_mrc_vec, mtx):
 
     # fill in the values to new vec and dens array
     new_vec_array[new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]] = new_vec
-    new_data_array[
-        new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]
-    ] = non_zero_dens
+    new_data_array[new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]] = non_zero_dens
 
     return new_vec_array, new_data_array
 
@@ -139,38 +135,70 @@ def rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx):
     non_zero_rot_list = combined_arr[dens_mask]
 
     # get the index of the non-zero density
-    non_zero_vec = vec[
-        non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]
-    ]
-    non_zero_dens = data[
-        non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]
-    ]
-    non_zero_dens_p1 = prob_c1[
-        non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]
-    ]
-    non_zero_dens_p2 = prob_c2[
-        non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]
-    ]
-    non_zero_dens_p3 = prob_c3[
-        non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]
-    ]
-    non_zero_dens_p4 = prob_c4[
-        non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]
-    ]
+    non_zero_vec = vec[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
+    non_zero_dens = data[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
+    non_zero_dens_p1 = prob_c1[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
+    non_zero_dens_p2 = prob_c2[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
+    non_zero_dens_p3 = prob_c3[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
+    non_zero_dens_p4 = prob_c4[non_zero_rot_list[:, 0], non_zero_rot_list[:, 1], non_zero_rot_list[:, 2]]
 
     # find the new indices
     new_ind_arr = (non_zero_rot_list[:, 3:6] + cent).astype(int)
 
     # save the rotated data
-    new_vec_array[new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]] = np.einsum(
-        "ij, kj->ki", mtx, non_zero_vec
-    )
-    new_data_array[
-        new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]
-    ] = non_zero_dens
+    new_vec_array[new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]] = np.einsum("ij, kj->ki", mtx, non_zero_vec)
+    new_data_array[new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]] = non_zero_dens
     new_p1[new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]] = non_zero_dens_p1
     new_p2[new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]] = non_zero_dens_p2
     new_p3[new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]] = non_zero_dens_p3
     new_p4[new_ind_arr[:, 0], new_ind_arr[:, 1], new_ind_arr[:, 2]] = non_zero_dens_p4
 
     return new_vec_array, new_data_array, new_p1, new_p2, new_p3, new_p4
+
+
+def fft_search_score_trans(target_X, target_Y, target_Z, search_vec, a, b, c, fft_object, ifft_object):
+    """A function perform FFT transformation on the query density vectors and finds the best translation on 3D vectors.
+
+    Args:
+        target_X, target_Y, target_Z (numpy.array): FFT transformed result from target map for xyz axies
+        search_vec (numpy.array): the input query map vector array
+        a, b, c (numpy.array): empty n-bytes aligned arrays for holding intermediate values in the transformation
+        fft_object (pyfftw.FFTW): preset FFT transformation plan
+        ifft_object (pyfftw.FFTW): preset inverse FFT transformation plan
+
+    Returns:
+        best (float): the maximum score found
+        trans (list(int)): the best translation associated with the maximum score
+    """
+
+    # make copies of the original vector arrays
+    x2 = copy.deepcopy(search_vec[..., 0])
+    y2 = copy.deepcopy(search_vec[..., 1])
+    z2 = copy.deepcopy(search_vec[..., 2])
+
+    # FFT transformations and vector product
+    X2 = np.zeros_like(target_X)
+    np.copyto(a, x2)
+    np.copyto(X2, fft_object(a))
+    dot_X = target_X * X2
+    np.copyto(b, dot_X)
+    dot_x = np.zeros_like(x2)
+    np.copyto(dot_x, ifft_object(b))
+
+    Y2 = np.zeros_like(target_Y)
+    np.copyto(a, y2)
+    np.copyto(Y2, fft_object(a))
+    dot_Y = target_Y * Y2
+    np.copyto(b, dot_Y)
+    dot_y = np.zeros_like(y2)
+    np.copyto(dot_y, ifft_object(b))
+
+    Z2 = np.zeros_like(target_Z)
+    np.copyto(a, z2)
+    np.copyto(Z2, fft_object(a))
+    dot_Z = target_Z * Z2
+    np.copyto(b, dot_Z)
+    dot_z = np.zeros_like(z2)
+    np.copyto(dot_z, ifft_object(b))
+
+    return find_best_trans_list([dot_x, dot_y, dot_z])

@@ -195,7 +195,6 @@ if __name__ == "__main__":
         else:
             print("Using FFTW3 for CPU.")
             use_gpu = False
-            gpu_id = -1
 
         # set mrc output path
         trans_mrc_path = args.b if args.mrcout else None

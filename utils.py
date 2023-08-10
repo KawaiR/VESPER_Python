@@ -3,7 +3,6 @@ import os.path
 
 import numba
 import numpy as np
-import torch
 from scipy.spatial.transform import Rotation as R
 
 from TEMPy.maps.map_parser import MapParser
@@ -50,31 +49,31 @@ def mrc_set_vox_size(mrc, thr=0.00, voxel_size=7.0):
     tmp_size = 2 * dmax * mrc.xwidth / voxel_size
 
     # get the best size suitable for fft operation
-    # from pyfftw import pyfftw
+    from pyfftw import pyfftw
+
+    new_xdim = pyfftw.next_fast_len(int(tmp_size))
+
+    # a = 2
+    # while 1:
+    #     if a > tmp_size:
+    #         break
+    #     a *= 2
     #
-    # new_xdim = pyfftw.next_fast_len(int(tmp_size))
-
-    a = 2
-    while 1:
-        if a > tmp_size:
-            break
-        a *= 2
-
-    b = 3
-    while 1:
-        if b > tmp_size:
-            break
-        b *= 2
-
-    b = 9
-    while 1:
-        if b > tmp_size:
-            break
-        b *= 2
-    if a > b:
-        new_xdim = b
-    else:
-        new_xdim = a
+    # b = 3
+    # while 1:
+    #     if b > tmp_size:
+    #         break
+    #     b *= 2
+    #
+    # b = 9
+    # while 1:
+    #     if b > tmp_size:
+    #         break
+    #     b *= 2
+    # if a > b:
+    #     new_xdim = b
+    # else:
+    #     new_xdim = a
 
     # set new origins
     new_orig = new_cent - 0.5 * new_xdim * voxel_size
@@ -125,7 +124,6 @@ def mrc_set_vox_size(mrc, thr=0.00, voxel_size=7.0):
 
 @numba.jit(nopython=True)
 def calc_prob(stp, endp, pos, density_data, prob_data, fsiv):
-    """Calculate the density and vector in resized map using Gaussian interpolation in original MRC density map"""
     dtotal = 0.0
     pos2 = np.zeros((3,))
 
@@ -906,7 +904,7 @@ def calc_angle_comb(ang_interval):
     seen = set()
     uniq = []
     for ang in angle_comb:
-        quat = tuple(np.round(R.from_euler("ZYX", ang, degrees=True).as_quat(), 4))
+        quat = tuple(np.round(R.from_euler("ZYX", ang, degrees=True).as_quat(True), 4))
         if quat not in seen:
             uniq.append(ang)
             seen.add(quat)
@@ -932,6 +930,8 @@ def convert_trans(cen1, cen2, r, trans, xwidth2, dim):
 
 
 def gpu_rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, new_pos_grid, device):
+
+    import torch
 
     # set the dimension to be x dimension as all dimension are the same
     dim = orig_mrc_data.shape[0]
@@ -1004,7 +1004,7 @@ def gpu_fft_search_best_dot(target_list, query_list):
     Returns: dot_product_list: (list(numpy.array)): vector product result that can be fed into find_best_trans_list()
     to find best translation
     """
-
+    import torch
     dot_product_list = []
     for target_complex, query_real in zip(target_list, query_list):
         query_complex = torch.fft.rfftn(query_real)
@@ -1018,6 +1018,7 @@ def gpu_fft_search_best_dot(target_list, query_list):
 def gpu_fft_get_score_trans_other(target_X, search_data, mode, ave=None, device=None):
     # GPU version of fft_get_score_trans_other, returns a numpy array.
 
+    import torch
     x2 = copy.deepcopy(search_data.cpu().detach().numpy())
 
     if mode == "Overlap":
@@ -1048,6 +1049,7 @@ def gpu_rot_and_search_fft(
     new_pos_grid=None,
     return_data=True
 ):
+    import torch
     rot_mtx = R.from_euler("xyz", angle, degrees=True).as_matrix().astype(np.float32)
     rot_mtx = torch.from_numpy(rot_mtx).to(device)
 
@@ -1145,13 +1147,8 @@ def find_best_trans_mixed(vec_fft_results, prob_fft_results, alpha, vstd, vave, 
 
 
 def gpu_rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx, new_pos_grid, device):
-    mrc_data = torch.from_numpy(data).to(device)
-    mrc_vec = torch.from_numpy(vec).to(device)
-    prob_c1 = torch.from_numpy(prob_c1).to(device)
-    prob_c2 = torch.from_numpy(prob_c2).to(device)
-    prob_c3 = torch.from_numpy(prob_c3).to(device)
-    prob_c4 = torch.from_numpy(prob_c4).to(device)
-    new_pos_grid = torch.from_numpy(new_pos_grid).to(device)
+
+    import torch
 
     # set the dimension to be x dimension as all dimension are the same
     dim = data.shape[0]
@@ -1184,7 +1181,7 @@ def gpu_rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx, new_pos
     valid_old_pos = (old_pos[in_bound_mask]).long()
 
     # get nonzero density positions in the map
-    non_zero_mask = mrc_data[valid_old_pos[:, 0], valid_old_pos[:, 1], valid_old_pos[:, 2]] > 0
+    non_zero_mask = data[valid_old_pos[:, 0], valid_old_pos[:, 1], valid_old_pos[:, 2]] > 0
 
     # apply nonzero mask to valid positions
     non_zero_old_pos = valid_old_pos[non_zero_mask]
@@ -1193,7 +1190,7 @@ def gpu_rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx, new_pos
     new_pos = (new_pos[in_bound_mask][non_zero_mask] + cent).long()
 
     # fill new density entries
-    new_data_array[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = mrc_data[
+    new_data_array[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = data[
         non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]
     ]
     new_p1[new_pos[:, 0], new_pos[:, 1], new_pos[:, 2]] = prob_c1[
@@ -1210,7 +1207,7 @@ def gpu_rot_mrc_prob(data, vec, prob_c1, prob_c2, prob_c3, prob_c4, mtx, new_pos
     ]
 
     # fetch and rotate the vectors
-    non_zero_vecs = mrc_vec[non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
+    non_zero_vecs = vec[non_zero_old_pos[:, 0], non_zero_old_pos[:, 1], non_zero_old_pos[:, 2]]
 
     new_vec = non_zero_vecs @ mtx.T
 
@@ -1229,6 +1226,8 @@ def calc_ldp_recall_score(ldp_arr, ca_arr, rot_mtx, trans, device):
     # rot_mtx: torch tensor of shape (3, 3)
     # trans: torch tensor of shape (3, )
     """
+
+    import torch
 
     # rotated backbone CA
     rot_backbone_ca = torch.matmul(ca_arr, rot_mtx) + trans

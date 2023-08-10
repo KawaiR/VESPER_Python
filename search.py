@@ -2,14 +2,12 @@
 import multiprocessing
 import os
 from datetime import datetime
-from pathlib import Path
 
 import concurrent.futures
 from itertools import product
 from pathlib import Path
 
 import mrcfile
-import numpy as np
 import pyfftw
 from tqdm import tqdm
 
@@ -38,6 +36,7 @@ class MrcObj:
         self.xdim = int(header.nx)
         self.ydim = int(header.ny)
         self.zdim = int(header.nz)
+
         self.xwidth = mrc.voxel_size.x
         self.ywidth = mrc.voxel_size.y
         self.zwidth = mrc.voxel_size.z
@@ -75,54 +74,6 @@ class MrcObj:
         self.ave = None  # average density value
         self.std_norm_ave = None  # L2 norm normalized with average density value
         self.std = None  # denormalize L2 norm
-
-
-def fft_search_score_trans(target_X, target_Y, target_Z, search_vec, a, b, c, fft_object, ifft_object):
-    """A function perform FFT transformation on the query density vectors and finds the best translation on 3D vectors.
-
-    Args:
-        target_X, target_Y, target_Z (numpy.array): FFT transformed result from target map for xyz axies
-        search_vec (numpy.array): the input query map vector array
-        a, b, c (numpy.array): empty n-bytes aligned arrays for holding intermediate values in the transformation
-        fft_object (pyfftw.FFTW): preset FFT transformation plan
-        ifft_object (pyfftw.FFTW): preset inverse FFT transformation plan
-
-    Returns:
-        best (float): the maximum score found
-        trans (list(int)): the best translation associated with the maximum score
-    """
-
-    # make copies of the original vector arrays
-    x2 = copy.deepcopy(search_vec[..., 0])
-    y2 = copy.deepcopy(search_vec[..., 1])
-    z2 = copy.deepcopy(search_vec[..., 2])
-
-    # FFT transformations and vector product
-    X2 = np.zeros_like(target_X)
-    np.copyto(a, x2)
-    np.copyto(X2, fft_object(a))
-    dot_X = target_X * X2
-    np.copyto(b, dot_X)
-    dot_x = np.zeros_like(x2)
-    np.copyto(dot_x, ifft_object(b))
-
-    Y2 = np.zeros_like(target_Y)
-    np.copyto(a, y2)
-    np.copyto(Y2, fft_object(a))
-    dot_Y = target_Y * Y2
-    np.copyto(b, dot_Y)
-    dot_y = np.zeros_like(y2)
-    np.copyto(dot_y, ifft_object(b))
-
-    Z2 = np.zeros_like(target_Z)
-    np.copyto(a, z2)
-    np.copyto(Z2, fft_object(a))
-    dot_Z = target_Z * Z2
-    np.copyto(b, dot_Z)
-    dot_z = np.zeros_like(z2)
-    np.copyto(dot_z, ifft_object(b))
-
-    return find_best_trans_list([dot_x, dot_y, dot_z])
 
 
 def fft_search_best_dot(target_list, query_list, a, b, c, fft_object, ifft_object):
@@ -242,24 +193,6 @@ def search_map_fft(
 
         exit(0)
 
-    # device = None
-    # if gpu:
-    #     # set up torch cuda device
-    #     import torch
-    #
-    #     torch.set_grad_enabled(False)
-    #
-    #     if not torch.cuda.is_available():
-    #         print("CUDA is not available. Please check your CUDA installation.")
-    #         exit(1)
-    #     else:
-    #         # set up torch cuda device
-    #         os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-    #         device = torch.device(f"cuda:{gpu_id}")
-    #         print(f"Using GPU {gpu_id} for CUDA acceleration.")
-    # else:
-    #     print("Using FFTW3 for CPU.")
-
     # init rotation grid
     search_pos_grid = (
         np.mgrid[
@@ -306,12 +239,8 @@ def search_map_fft(
         target_list = [X1, Y1, Z1]
 
     if gpu:
-        # convert to tensor on GPU
-        # import torch  # lazy import
-        #
-        # torch.set_grad_enabled(False)
-
         # move target list to GPU
+        import torch
         target_list = [torch.from_numpy(target_list[i]).to(device).share_memory_() for i in range(len(target_list))]
     else:
         # fftw plans initialization
@@ -336,6 +265,7 @@ def search_map_fft(
         vec = torch.from_numpy(mrc_tgt.vec).to(device).share_memory_()
         new_pos_grid = torch.from_numpy(search_pos_grid).to(device).share_memory_()
 
+        # no multiprocessing
         # for angle in tqdm(angle_comb):
         #     vec_score, vec_trans = gpu_rot_and_search_fft(
         #         data,
@@ -357,6 +287,7 @@ def search_map_fft(
         #     }
         # )
 
+        # process pool
         # mp.set_start_method("spawn")
         # with tqdm(total=len(angle_comb)) as pbar:
         #     with mp.Pool(4) as pool:
@@ -383,8 +314,9 @@ def search_map_fft(
         #                 }
         #             )
 
+        # concurrent futures thread pool
         with tqdm(total=len(angle_comb)) as pbar:
-            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
                 futures = {
                     executor.submit(
                         gpu_rot_and_search_fft,
@@ -446,7 +378,13 @@ def search_map_fft(
     angle_score = sorted(angle_score, key=lambda k: k["vec_score"], reverse=True)
 
     # LDP Recall calculation and sort
-    ldp_recall_mode = ldp_path is not None and backbone_path is not None
+    ldp_recall_mode = (ldp_path is not None) + (backbone_path is not None)
+    if ldp_recall_mode == 1:
+        print("LDP Recall mode is not complete. Please provide both ldp and backbone files.")
+        ldp_recall_mode = False
+    elif ldp_recall_mode == 2:
+        ldp_recall_mode = True
+
     if ldp_recall_mode:
         # get atom coords from ldp
         ldp_atoms = []
@@ -611,7 +549,7 @@ def search_map_fft(
                 new_pos_grid_gpu = torch.from_numpy(search_pos_grid).to(device).share_memory_()
 
                 with tqdm(total=len(ang_list), position=1, leave=False) as pbar:
-                    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=threads) as executor:
                         futures = {
                             executor.submit(
                                 gpu_rot_and_search_fft,
