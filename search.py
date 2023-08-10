@@ -1,8 +1,10 @@
 # coding: utf-8
-# import concurrent.futures
 import multiprocessing
 import os
 from datetime import datetime
+from pathlib import Path
+
+import concurrent.futures
 from itertools import product
 from pathlib import Path
 
@@ -203,12 +205,13 @@ def search_map_fft(
     showPDB=False,
     folder=None,
     gpu=False,
-    gpu_id=-1,
+    device=None,
     remove_dup=False,
     ldp_path=None,
     backbone_path=None,
     input_pdb=None,
     input_mrc=None,
+    threads=2,
 ):
     """The main search function for fining the best superimposition for the target and the query map.
 
@@ -239,28 +242,30 @@ def search_map_fft(
 
         exit(0)
 
-    device = None
-    if gpu:
-        # set up torch cuda device
-        import torch
-
-        if not torch.cuda.is_available():
-            print("CUDA is not available. Please check your CUDA installation.")
-            exit(1)
-        else:
-            # set up torch cuda device
-            os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
-            device = torch.device(f"cuda:{gpu_id}")
-            print(f"Using GPU {gpu_id} for CUDA acceleration.")
-    else:
-        print("Using FFTW3 for CPU.")
+    # device = None
+    # if gpu:
+    #     # set up torch cuda device
+    #     import torch
+    #
+    #     torch.set_grad_enabled(False)
+    #
+    #     if not torch.cuda.is_available():
+    #         print("CUDA is not available. Please check your CUDA installation.")
+    #         exit(1)
+    #     else:
+    #         # set up torch cuda device
+    #         os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+    #         device = torch.device(f"cuda:{gpu_id}")
+    #         print(f"Using GPU {gpu_id} for CUDA acceleration.")
+    # else:
+    #     print("Using FFTW3 for CPU.")
 
     # init rotation grid
     search_pos_grid = (
         np.mgrid[
-        0: mrc_tgt.data.shape[0],
-        0: mrc_tgt.data.shape[0],
-        0: mrc_tgt.data.shape[0],
+            0 : mrc_tgt.data.shape[0],
+            0 : mrc_tgt.data.shape[0],
+            0 : mrc_tgt.data.shape[0],
         ]
         .reshape(3, -1)
         .T
@@ -300,11 +305,14 @@ def search_map_fft(
         Z1 = np.conj(Z1)
         target_list = [X1, Y1, Z1]
 
-    if device:
+    if gpu:
         # convert to tensor on GPU
-        import torch  # lazy import
+        # import torch  # lazy import
+        #
+        # torch.set_grad_enabled(False)
 
-        target_list = [torch.from_numpy(target_list[i]).to(device) for i in range(len(target_list))]
+        # move target list to GPU
+        target_list = [torch.from_numpy(target_list[i]).to(device).share_memory_() for i in range(len(target_list))]
     else:
         # fftw plans initialization
         a = pyfftw.empty_aligned(mrc_tgt.vec[..., 0].shape, dtype="float32")
@@ -319,19 +327,94 @@ def search_map_fft(
     angle_score = []
 
     # search process
-    for angle in tqdm(angle_comb, desc="Searching Rotations"):
-        if gpu:
-            vec_score, vec_trans, _, _ = gpu_rot_and_search_fft(
-                mrc_tgt.data,
-                mrc_tgt.vec,
-                angle,
-                target_list,
-                mrc_ref,
-                device,
-                mode=mode,
-                new_pos_grid=search_pos_grid,
-            )
-        else:
+    if gpu:
+        # use torch multiprocessing
+        import torch.multiprocessing as mp
+
+        # move everything to GPU
+        data = torch.from_numpy(mrc_tgt.data).to(device).share_memory_()
+        vec = torch.from_numpy(mrc_tgt.vec).to(device).share_memory_()
+        new_pos_grid = torch.from_numpy(search_pos_grid).to(device).share_memory_()
+
+        # for angle in tqdm(angle_comb):
+        #     vec_score, vec_trans = gpu_rot_and_search_fft(
+        #         data,
+        #         vec,
+        #         angle,
+        #         target_list,
+        #         mrc_ref,
+        #         device,
+        #         mode,
+        #         new_pos_grid,
+        #         False
+        #     )
+        # angle_score.append(
+        #     {
+        #         "angle": angle,
+        #         "vec_score": vec_score * rd3,
+        #         "vec_trans": vec_trans,
+        #         "ldp_recall": 0.0,
+        #     }
+        # )
+
+        # mp.set_start_method("spawn")
+        # with tqdm(total=len(angle_comb)) as pbar:
+        #     with mp.Pool(4) as pool:
+        #         results = [
+        #             (
+        #                 rot_ang,
+        #                 pool.apply_async(
+        #                     gpu_rot_and_search_fft,
+        #                     args=(data, vec, rot_ang, target_list, mrc_ref, device, mode, new_pos_grid, False)
+        #                 ),
+        #             )
+        #             for rot_ang in angle_comb
+        #         ]
+        #         for result in results:
+        #             rot_ang, future = result
+        #             result = future.get()
+        #             pbar.update(1)
+        #             angle_score.append(
+        #                 {
+        #                     "angle": rot_ang,
+        #                     "vec_score": result[0] * rd3,
+        #                     "vec_trans": result[1],
+        #                     "ldp_recall": 0.0,
+        #                 }
+        #             )
+
+        with tqdm(total=len(angle_comb)) as pbar:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+                futures = {
+                    executor.submit(
+                        gpu_rot_and_search_fft,
+                        data,
+                        vec,
+                        rot_ang,
+                        target_list,
+                        mrc_ref,
+                        device,
+                        mode,
+                        new_pos_grid,
+                        False,
+                    ): rot_ang
+                    for rot_ang in angle_comb
+                }
+                for future in concurrent.futures.as_completed(futures):
+                    rot_ang = futures[future]
+                    result = future.result()
+                    pbar.update(1)
+                    angle_score.append(
+                        {
+                            "angle": rot_ang,
+                            "vec_score": result[0] * rd3,
+                            "vec_trans": result[1],
+                            "ldp_recall": 0.0,
+                        }
+                    )
+
+    else:
+        for angle in tqdm(angle_comb):
             vec_score, vec_trans, _, _ = rot_and_search_fft(
                 mrc_tgt.data,
                 mrc_tgt.vec,
@@ -344,14 +427,14 @@ def search_map_fft(
                 mode=mode,
                 new_pos_grid=search_pos_grid,
             )
-        angle_score.append(
-            {
-                "angle": angle,
-                "vec_score": vec_score * rd3,
-                "vec_trans": vec_trans,
-                "ldp_recall": 0.0,
-            }
-        )
+            angle_score.append(
+                {
+                    "angle": angle,
+                    "vec_score": vec_score * rd3,
+                    "vec_trans": vec_trans,
+                    "ldp_recall": 0.0,
+                }
+            )
 
     # calculate the ave and std
     score_arr = np.array([row["vec_score"] for row in angle_score])
@@ -363,8 +446,8 @@ def search_map_fft(
     angle_score = sorted(angle_score, key=lambda k: k["vec_score"], reverse=True)
 
     # LDP Recall calculation and sort
-    ldp_recalL_mode = ldp_path is not None and backbone_path is not None
-    if ldp_recalL_mode:
+    ldp_recall_mode = ldp_path is not None and backbone_path is not None
+    if ldp_recall_mode:
         # get atom coords from ldp
         ldp_atoms = []
         with open(ldp_path) as f:
@@ -466,7 +549,7 @@ def search_map_fft(
         angle_score = new_angle_score
 
     # sort the list and get top N results
-    if ldp_recalL_mode:
+    if ldp_recall_mode:
         sorted_top_n = sorted(angle_score, key=lambda x: x["ldp_recall"], reverse=True)[:TopN]
     else:
         sorted_top_n = sorted(angle_score, key=lambda x: x["vec_score"], reverse=True)[:TopN]
@@ -494,7 +577,7 @@ def search_map_fft(
             "{:.3f}".format(new_trans[2]) + ")",
         )
 
-        if ldp_recalL_mode:
+        if ldp_recall_mode:
             print(f"LDP Recall Score: {result_mrc['ldp_recall']}")
 
     print()
@@ -506,18 +589,12 @@ def search_map_fft(
             refined_score = []
             ang = result_mrc["angle"]
 
-            # ang_list = np.array(
-            #     np.meshgrid(
-            #         [ang[0] - 5, ang[0], ang[0] + 5],
-            #         [ang[1] - 5, ang[1], ang[1] + 5],
-            #         [ang[2] - 5, ang[2], ang[2] + 5],
-            #     )
-            # ).T.reshape(-1, 3)
+            interval = 2
 
             # 2 degrees interval refinement
-            x_list = range(int(ang[0]) - 5, int(ang[0]) + 6, 2)
-            y_list = range(int(ang[1]) - 5, int(ang[1]) + 6, 2)
-            z_list = range(int(ang[2]) - 5, int(ang[2]) + 6, 2)
+            x_list = range(int(ang[0]) - 5, int(ang[0]) + 6, interval)
+            y_list = range(int(ang[1]) - 5, int(ang[1]) + 6, interval)
+            z_list = range(int(ang[2]) - 5, int(ang[2]) + 6, interval)
 
             ang_list = np.array(list(product(x_list, y_list, z_list))).astype(np.float32)  # convert angle to float32
 
@@ -528,19 +605,44 @@ def search_map_fft(
             ang_list[ang_list < 0] += 360
             ang_list[ang_list > 360] -= 360
 
-            for angle in tqdm(ang_list, position=1, leave=False):
-                if gpu:
-                    vec_score, vec_trans, new_vec, new_data = gpu_rot_and_search_fft(
-                        mrc_tgt.data,
-                        mrc_tgt.vec,
-                        angle,
-                        target_list,
-                        mrc_ref,
-                        device,
-                        mode=mode,
-                        new_pos_grid=search_pos_grid,
-                    )
-                else:
+            if gpu:
+                data_gpu = torch.from_numpy(mrc_tgt.data).to(device).share_memory_()
+                vec_gpu = torch.from_numpy(mrc_tgt.vec).to(device).share_memory_()
+                new_pos_grid_gpu = torch.from_numpy(search_pos_grid).to(device).share_memory_()
+
+                with tqdm(total=len(ang_list), position=1, leave=False) as pbar:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+                        futures = {
+                            executor.submit(
+                                gpu_rot_and_search_fft,
+                                data_gpu,
+                                vec_gpu,
+                                rot_ang,
+                                target_list,
+                                mrc_ref,
+                                device,
+                                mode,
+                                new_pos_grid_gpu,
+                                True,
+                            ): rot_ang
+                            for rot_ang in ang_list
+                        }
+                        for future in concurrent.futures.as_completed(futures):
+                            rot_ang = futures[future]
+                            result = future.result()
+                            pbar.update(1)
+                            refined_score.append(
+                                {
+                                    "angle": rot_ang,
+                                    "vec_score": result[0] * rd3,
+                                    "vec_trans": result[1],
+                                    "vec": result[2],
+                                    "data": result[3],
+                                    "ldp_recall": 0.0,
+                                }
+                            )
+            else:
+                for angle in tqdm(ang_list, position=1, leave=False):
                     vec_score, vec_trans, new_vec, new_data = rot_and_search_fft(
                         mrc_tgt.data,
                         mrc_tgt.vec,
@@ -553,15 +655,25 @@ def search_map_fft(
                         mode=mode,
                         new_pos_grid=search_pos_grid,
                     )
-                if ldp_recalL_mode:
-                    r = R.from_euler("xyz", angle, degrees=True)
+                    refined_score.append(
+                        {
+                            "angle": tuple(angle),
+                            "vec_score": vec_score * rd3,
+                            "vec_trans": vec_trans,
+                            "vec": new_vec,
+                            "data": new_data,
+                        }
+                    )
+            if ldp_recall_mode:
+                for item in refined_score:
+                    r = R.from_euler("xyz", item["angle"], degrees=True)
                     rot_mtx = r.inv().as_matrix()
                     rot_mtx = torch.from_numpy(rot_mtx).to(device)
                     real_trans = convert_trans(
                         mrc_ref.cent,
                         mrc_tgt.cent,
                         r,
-                        vec_trans,
+                        item["vec_trans"],
                         mrc_tgt.xwidth,
                         mrc_tgt.xdim,
                     )
@@ -572,31 +684,11 @@ def search_map_fft(
                         torch.from_numpy(np.array(real_trans)).to(device),
                         device,
                     )
-                    refined_score.append(
-                        {
-                            "angle": tuple(angle),
-                            "vec_score": vec_score * rd3,
-                            "vec_trans": vec_trans,
-                            "vec": new_vec,
-                            "data": new_data,
-                            "ldp_recall": ldp_recall,
-                        }
-                    )
-                else:
-                    refined_score.append(
-                        {
-                            "angle": tuple(angle),
-                            "vec_score": vec_score * rd3,
-                            "vec_trans": vec_trans,
-                            "vec": new_vec,
-                            "data": new_data,
-                        }
-                    )
-            if ldp_recalL_mode:
+                    item["ldp_recall"] = ldp_recall
                 refined_list.append(max(refined_score, key=lambda x: x["ldp_recall"]))
             else:
                 refined_list.append(max(refined_score, key=lambda x: x["vec_score"]))
-        if ldp_recalL_mode:
+        if ldp_recall_mode:
             refined_list = sorted(refined_list, key=lambda x: x["ldp_recall"], reverse=True)
         else:
             refined_list = sorted(refined_list, key=lambda x: x["vec_score"], reverse=True)
@@ -651,7 +743,7 @@ def search_map_fft(
 
         print(f"Voxel Trans:{result_mrc['vec_trans']}, Normalized Score: {(result_mrc['vec_score'] - ave) / std}")
 
-        if ldp_recalL_mode:
+        if ldp_recall_mode:
             print(f"LDP Recall Score: {result_mrc['ldp_recall']}")
 
         rot_mtx = R.from_euler("xyz", result_mrc["angle"], degrees=True).inv().as_matrix()
@@ -760,17 +852,6 @@ def search_map_fft_prob(
     Returns:
         refined_list (list): a list of refined search results including the probability score
     """
-
-    if gpu:
-        # set up torch cuda device
-        import torch
-
-        if not torch.cuda.is_available():
-            print("CUDA is not available. Please check your CUDA installation.")
-            exit(1)
-        else:
-            # set up torch cuda device
-            device = torch.device(f"cuda:{gpu_id}")
 
     # init the target map vectors
     # does this part need to be changed?

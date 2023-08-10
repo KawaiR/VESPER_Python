@@ -13,67 +13,6 @@ class Mode(Enum):
     L = "Laplacian"
 
 
-# def alpha_is_zero(
-#     obj_a, obj_b, threshold1, threshold2, bandwidth, voxel_spacing, angle_spacing, topN, showPDB, modeVal, evalMode
-# ):
-#     # construct mrc objects
-#     ref_map = MrcObj(obj_a)
-#     tgt_map = MrcObj(obj_b)
-#
-#     # set voxel size and unify dimensions
-#     ref_map, ref_map_resampled = mrc_set_vox_size(ref_map, threshold1, voxel_spacing)
-#     tgt_map, tgt_map_resampled = mrc_set_vox_size(tgt_map, threshold2, voxel_spacing)
-#
-#     if ref_map_resampled.xdim > tgt_map_resampled.xdim:
-#         dim = tgt_map_resampled.xdim = tgt_map_resampled.ydim = tgt_map_resampled.zdim = ref_map_resampled.xdim
-#
-#         tgt_map_resampled.orig[0] = tgt_map_resampled.cent[0] - 0.5 * voxel_spacing * tgt_map_resampled.xdim
-#         tgt_map_resampled.orig[1] = tgt_map_resampled.cent[1] - 0.5 * voxel_spacing * tgt_map_resampled.xdim
-#         tgt_map_resampled.orig[2] = tgt_map_resampled.cent[2] - 0.5 * voxel_spacing * tgt_map_resampled.xdim
-#
-#     else:
-#         dim = ref_map_resampled.xdim = ref_map_resampled.ydim = ref_map_resampled.zdim = tgt_map_resampled.xdim
-#
-#         ref_map_resampled.orig[0] = ref_map_resampled.cent[0] - 0.5 * voxel_spacing * ref_map_resampled.xdim
-#         ref_map_resampled.orig[1] = ref_map_resampled.cent[1] - 0.5 * voxel_spacing * ref_map_resampled.xdim
-#         ref_map_resampled.orig[2] = ref_map_resampled.cent[2] - 0.5 * voxel_spacing * ref_map_resampled.xdim
-#
-#     ref_map_resampled.dens = np.zeros((dim**3, 1), dtype="float32")
-#     ref_map_resampled.vec = np.zeros((dim, dim, dim, 3), dtype="float32")
-#     ref_map_resampled.data = np.zeros((dim, dim, dim), dtype="float32")
-#
-#     tgt_map_resampled.dens = np.zeros((dim**3, 1), dtype="float32")
-#     tgt_map_resampled.vec = np.zeros((dim, dim, dim, 3), dtype="float32")
-#     tgt_map_resampled.data = np.zeros((dim, dim, dim), dtype="float32")
-#
-#     # perform resampling and vector calculation
-#     ref_map_resampled = resample_and_vec(ref_map, ref_map_resampled, bandwidth)
-#     tgt_map_resampled = resample_and_vec(tgt_map, tgt_map_resampled, bandwidth)
-#
-#     # search map
-#     if modeVal == "V":
-#         modeVal = "VecProduct"
-#     elif modeVal == "O":
-#         modeVal = "Overlap"
-#     elif modeVal == "C":
-#         modeVal = "CC"
-#     elif modeVal == "P":
-#         modeVal = "PCC"
-#     elif modeVal == "L":
-#         modeVal = "Laplacian"
-#
-#     search_map_fft(
-#         ref_map_resampled,
-#         tgt_map_resampled,
-#         TopN=topN,
-#         ang=angle_spacing,
-#         mode=modeVal,
-#         is_eval_mode=evalMode,
-#         showPDB=showPDB,
-#         folder=folder,
-#     )
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     subparser = parser.add_subparsers(dest="command")
@@ -112,6 +51,7 @@ if __name__ == "__main__":
     orig.add_argument("-ca", type=str, default=None, help="Path to the CA file def=None")
     orig.add_argument("-pdbin", type=str, default=None, help="Input PDB file to be transformed def=None")
     orig.add_argument("-mrcout", action="store_true", default=False, help="Output the transformed query map def=false")
+    orig.add_argument("-c", type=int, default=2, help="Number of threads to use def=2")
 
     # secondary structure matching menu
     prob.add_argument("-a", type=str, required=True, help="MAP1.mrc (large)")
@@ -178,6 +118,7 @@ if __name__ == "__main__":
         print("Show topN models in PDB format: ", args.S)
         print("Remove duplicates: ", args.nodup)
         print("Scoring mode: ", modeVal)
+        print("Number of threads to use: ", args.c)
         if args.o:
             print("Output folder: ", args.o)
         if args.gpu:
@@ -235,11 +176,24 @@ if __name__ == "__main__":
         # print("--- %s seconds ---" % (time.time() - start_time))
         print()
 
+        device = None
         # set GPU ID
         if args.gpu is not None:
             use_gpu = True
             gpu_id = args.gpu
+            import torch
+
+            torch.set_grad_enabled(False)
+            if not torch.cuda.is_available():
+                print("GPU is specified but CUDA is not available.")
+                exit(1)
+            else:
+                # set up torch cuda device
+                os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
+                device = torch.device(f"cuda:{gpu_id}")
+                print(f"Using GPU {gpu_id} for CUDA acceleration.")
         else:
+            print("Using FFTW3 for CPU.")
             use_gpu = False
             gpu_id = -1
 
@@ -256,12 +210,13 @@ if __name__ == "__main__":
             showPDB=args.S,
             folder=args.o,
             gpu=use_gpu,
-            gpu_id=gpu_id,
+            device=device,
             remove_dup=args.nodup,
             ldp_path=args.ldp,
             backbone_path=args.ca,
             input_pdb=args.pdbin,
             input_mrc=trans_mrc_path,
+            threads=args.c,
         )
 
     elif args.command == "prob":
@@ -333,12 +288,6 @@ if __name__ == "__main__":
         print("Alpha: ", alpha)
         print("Bandwidth of the Gaussian filter for probability values: ", args.B)
         print("Threshold for probability values: ", args.R)
-
-        # if alpha == 0.0:
-        #     alpha_is_zero(
-        #         objA, objB, threshold1, threshold2, bandwidth, vox_size, angle_spacing, topN, showPDB, modeVal, evalMode
-        #     )
-        # else:
 
         prob_maps = np.load(npA).astype(np.float32)
         prob_maps_chain = np.load(npB).astype(np.float32)

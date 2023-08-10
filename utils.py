@@ -933,16 +933,12 @@ def convert_trans(cen1, cen2, r, trans, xwidth2, dim):
 
 def gpu_rot_mrc(orig_mrc_data, orig_mrc_vec, mtx, new_pos_grid, device):
 
-    # move everything to GPU
-    orig_mrc_data = torch.from_numpy(orig_mrc_data).to(device)
-    orig_mrc_vec = torch.from_numpy(orig_mrc_vec).to(device)
-    new_pos_grid = torch.from_numpy(new_pos_grid).to(device)
-
     # set the dimension to be x dimension as all dimension are the same
     dim = orig_mrc_data.shape[0]
 
     # set the rotation center
     cent = 0.5 * float(dim)
+    cent = torch.tensor(cent, device=device)
 
     # get relative new positions from center
     new_pos = new_pos_grid - cent
@@ -1050,6 +1046,7 @@ def gpu_rot_and_search_fft(
     device,
     mode="VecProduct",
     new_pos_grid=None,
+    return_data=True
 ):
     rot_mtx = R.from_euler("xyz", angle, degrees=True).as_matrix().astype(np.float32)
     rot_mtx = torch.from_numpy(rot_mtx).to(device)
@@ -1079,7 +1076,11 @@ def gpu_rot_and_search_fft(
         if mode == "PCC":
             vec_score = vec_score / (mrc_target.std_norm_ave**2)
 
-    return vec_score, vec_trans, new_vec.cpu().numpy(), new_data.cpu().numpy()
+
+    if return_data:
+        return vec_score, vec_trans, new_vec.cpu().numpy(), new_data.cpu().numpy()
+    else:
+        return vec_score, vec_trans
 
 
 def find_best_trans_list(input_list):

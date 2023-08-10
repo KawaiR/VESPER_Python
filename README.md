@@ -113,6 +113,7 @@ Usage: main.py orig [-h] -a A -b B [-t T] [-T T] [-g G] [-s S] [-A A] [-N N] [-S
   -pdbin                    Input PDB file for transformation (Optional)
   -ca {Backbone PDB Path}   Query map CA atoms in PDB format for LDP recall reranking only (Optional)
   -ldp {LDP PDB Path}       Local dense point representation for LDP recall reranking only (Optional)
+  -c {Thread Count}         Number of threads to use, def=2
 ```
 
 (2) Mode 2: Probability maps generated for each secondary structure in both maps used for alignment must be generated
