@@ -762,7 +762,7 @@ def calc_angle_comb(ang_interval):
     seen = set()
     uniq = []
     for ang in angle_comb:
-        quat = tuple(np.round(R.from_euler("ZYX", ang, degrees=True).as_quat(True), 4))
+        quat = tuple(np.round(R.from_euler("ZYX", ang, degrees=True).as_quat(), 4))
         if quat not in seen:
             uniq.append(ang)
             seen.add(quat)
