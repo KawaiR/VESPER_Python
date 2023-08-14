@@ -28,7 +28,7 @@ class MrcObj:
 
     def __init__(self, path):
         # open the specified mrcfile and read the header information
-        mrc = mrcfile.open(path)
+        mrc = mrcfile.open(path, permissive=True)
         data = mrc.data
         header = mrc.header
 
