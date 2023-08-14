@@ -520,7 +520,7 @@ def search_map_fft(
 
     print()
 
-    if ang > 5.0:
+    if ang >= 5.0:
         print("###Start Refining###")
         refined_list = []
         for result_mrc in tqdm(sorted_top_n, desc="Refining Top N", position=0):
