@@ -390,9 +390,8 @@ def search_map_fft(
         ldp_atoms = []
         with open(ldp_path) as f:
             for line in f:
-                tokens = line.split()
-                if tokens[0] == "ATOM":
-                    ldp_atoms.append(np.array((float(tokens[6]), float(tokens[7]), float(tokens[8]))))
+                if line.startswith("ATOM"):
+                    ldp_atoms.append(np.array((float(line[30:38]), float(line[38:46]), float(line[46:54]))))
 
         ldp_atoms = torch.from_numpy(np.array(ldp_atoms)).to(device)
 
@@ -400,10 +399,9 @@ def search_map_fft(
         backbone_ca = []
         with open(backbone_path) as f:
             for line in f:
-                tokens = line.split()
-                if tokens[0] == "ATOM" and tokens[2] == "CA":  # only CA atoms
+                if line.startswith("ATOM") and line[12:16].strip() == "CA":  # only CA atoms
                     # if tokens[0] == "ATOM": # all atoms
-                    backbone_ca.append(np.array((float(tokens[6]), float(tokens[7]), float(tokens[8]))))
+                    backbone_ca.append(np.array((float(line[30:38]), float(line[38:46]), float(line[46:54]))))
 
         backbone_ca = torch.from_numpy(np.array(backbone_ca)).to(device)
 
