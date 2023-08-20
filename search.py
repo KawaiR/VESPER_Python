@@ -393,6 +393,7 @@ def search_map_fft(
                 if line.startswith("ATOM"):
                     ldp_atoms.append(np.array((float(line[30:38]), float(line[38:46]), float(line[46:54]))))
 
+        assert len(ldp_atoms) > 0, "No points found in LDP file."
         ldp_atoms = torch.from_numpy(np.array(ldp_atoms)).to(device)
 
         # get ca atoms from backbone
@@ -403,6 +404,7 @@ def search_map_fft(
                     # if tokens[0] == "ATOM": # all atoms
                     backbone_ca.append(np.array((float(line[30:38]), float(line[38:46]), float(line[46:54]))))
 
+        assert len(backbone_ca) > 0, "No CA atoms found in backbone file."
         backbone_ca = torch.from_numpy(np.array(backbone_ca)).to(device)
 
         # calculate for each rotation
