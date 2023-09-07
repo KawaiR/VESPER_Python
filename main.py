@@ -55,6 +55,7 @@ if __name__ == "__main__":
     orig.add_argument("-mrcout", action="store_true", default=False, help="Output the transformed query map def=false")
     orig.add_argument("-c", type=int, default=2, help="Number of threads to use def=2")
     orig.add_argument("-al", type=float, default=None, help="Angle limit for searching def=None")
+    orig.add_argument("-res", type=float, default=None, help="Resolution of the experimental map used to create simulated map from structure")
 
     # secondary structure matching menu
     ss.add_argument("-a", type=str, required=True, help="MAP1.mrc (large)")
@@ -83,11 +84,30 @@ if __name__ == "__main__":
     ss.add_argument("-gpu", type=int, help="GPU ID to use for CUDA acceleration def=0")
     ss.add_argument("-pdbin", type=str, default=None, help="Input PDB file to be transformed def=None")
     ss.add_argument("-c", type=int, default=2, help="Number of threads to use def=2")
+    ss.add_argument("-res", type=float, default=None, help="Resolution of the experimental map used to create simulated map from structure")
 
     args = parser.parse_args()
 
     assert os.path.exists(args.a), "Reference map not found, please check -a option"
     assert os.path.exists(args.b), "Target map not found, please check -b option"
+
+    if args.b.split(".")[-1] == 'pdb' or args.b.split(".")[-1] == 'cif':
+        assert args.res is not None, "Please specify resolution when using structure as input."
+        # simulate the map at target resolution
+        from TEMPy.protein.structure_blurrer import StructureBlurrer
+        from TEMPy.protein.structure_parser import PDBParser, mmCIFParser
+        sb = StructureBlurrer()
+        if args.b.split(".")[-1] == "pdb":
+            structure = PDBParser.read_PDB_file('PDB1', args.b)
+        elif args.b.split(".")[-1] == "cif":
+            structure = mmCIFParser.read_mmCIF_file(args.b)
+        sim_map = sb.gaussian_blur_real_space(prot=structure, resolution=args.res)
+        os.makedirs("map_tmp", exist_ok=True)
+        sim_map.write_to_MRC_file("map_tmp/simu_map.mrc")
+        assert os.path.exists("map_tmp/simu_map.mrc"), "Failed to create simulated map from structure."
+        # set args.b to the simu map
+        args.b = "map_tmp/simu_map.mrc"
+
 
     # GPU settings
     device = None
