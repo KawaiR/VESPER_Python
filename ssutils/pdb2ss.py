@@ -49,11 +49,11 @@ def contains_number(s):
     return any(i.isdigit() for i in s)
 
 
-def assign_ss(pdb_path, output_dir, verbose=False):
+def run_stride(pdb_path, output_dir, verbose=False):
     """
-    The assign_ss function takes a PDB file and assigns secondary structure to each residue.
+    The run_stride function takes a PDB file and assigns secondary structure to each residue.
     It does this by running the program Stride, which is included in the repository.
-    The output of assign_ss is a text file containing one line for each residue in the PDB file, with information about that residue's secondary structure assignment.
+    The output of run_stride is a text file containing one line for each residue in the PDB file, with information about that residue's secondary structure assignment.
 
     :param pdb_path: Specify the path to the pdb file
     :param output_dir: Specify the directory where the output file will be saved
@@ -95,6 +95,9 @@ def split_pdb_by_ss(pdb_path, ss_path, output_dir, verbose=False):
     """
     if verbose:
         print("Splitting PDB file by secondary structure...")
+        print("PDB file: " + pdb_path)
+        print("SS file: " + ss_path)
+        print("Output directory: " + output_dir)
 
     os.makedirs(output_dir, exist_ok=True)
 
@@ -142,15 +145,15 @@ def split_pdb_by_ss(pdb_path, ss_path, output_dir, verbose=False):
 
     pdb_path = pathlib.Path(pdb_path)
 
-    with open(output_dir + pdb_path.stem + "_ssA.pdb", "w") as fp:
+    with open(os.path.join(output_dir, f"{pdb_path.stem}_ssA.pdb"), "w") as fp:
         for item in a_strs["str"].to_list():
             fp.write("%s" % item)
 
-    with open(output_dir + pdb_path.stem + "_ssB.pdb", "w") as fp:
+    with open(os.path.join(output_dir, f"{pdb_path.stem}_ssB.pdb"), "w") as fp:
         for item in b_strs["str"].to_list():
             fp.write("%s" % item)
 
-    with open(output_dir + pdb_path.stem + "_ssC.pdb", "w") as fp:
+    with open(os.path.join(output_dir, f"{pdb_path.stem}_ssC.pdb"), "w") as fp:
         for item in c_strs["str"].to_list():
             fp.write("%s" % item)
 
@@ -195,7 +198,7 @@ def gen_npy(pdb_path, sample_res, npy_path=None, verbose=False):
     os.makedirs(pdb_dir, exist_ok=True)
     os.makedirs(simu_mrc_dir, exist_ok=True)
 
-    out_ss = assign_ss(pdb_path, ss_dir, verbose)
+    out_ss = run_stride(pdb_path, ss_dir, verbose)
     split_pdb_by_ss(pdb_path, out_ss, pdb_dir, verbose)
 
     pdb_simu_map_path = os.path.join(tmp_dir, f"{pdb_stem}_simu_map.mrc")
@@ -224,11 +227,11 @@ def gen_npy(pdb_path, sample_res, npy_path=None, verbose=False):
         arr = np.zeros((4, dims[0], dims[1], dims[2]))
 
         for file in os.listdir(simu_mrc_dir):
-            if file.endswith("ssC.pdb.mrc"):
+            if "ssC" in file:
                 arr[0] = mrcfile.open(os.path.join(simu_mrc_dir, file)).data.copy()
-            elif file.endswith("ssB.pdb.mrc"):
+            elif "ssB" in file:
                 arr[1] = mrcfile.open(os.path.join(simu_mrc_dir, file)).data.copy()
-            elif file.endswith("ssA.pdb.mrc"):
+            elif "ssA" in file:
                 arr[2] = mrcfile.open(os.path.join(simu_mrc_dir, file)).data.copy()
 
         arr = np.transpose(arr, (1, 2, 3, 0))

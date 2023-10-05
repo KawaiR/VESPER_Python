@@ -60,7 +60,7 @@ if __name__ == "__main__":
     # secondary structure matching menu
     ss.add_argument("-a", type=str, required=True, help="MAP1.mrc (large)")
     ss.add_argument("-b", type=str, required=True, help="MAP2.mrc (small)")
-    ss.add_argument("-npb", type=str, required=True, help="numpy array for Predictions for map 2")
+    ss.add_argument("-npb", type=str, required=False, help="numpy array for Predictions for map 2")
     ss.add_argument("-npa", type=str, required=True, help="numpy array for Predictions for map 1")
     ss.add_argument(
         "-alpha",
@@ -91,6 +91,8 @@ if __name__ == "__main__":
     assert os.path.exists(args.a), "Reference map not found, please check -a option"
     assert os.path.exists(args.b), "Target map not found, please check -b option"
 
+    tgt_ss = None
+
     if args.b.split(".")[-1] == 'pdb' or args.b.split(".")[-1] == 'cif':
         assert args.res is not None, "Please specify resolution when using structure as input."
         # simulate the map at target resolution
@@ -101,13 +103,20 @@ if __name__ == "__main__":
             structure = PDBParser.read_PDB_file('PDB1', args.b)
         elif args.b.split(".")[-1] == "cif":
             structure = mmCIFParser.read_mmCIF_file(args.b)
+        else:
+            raise Exception("Only PDB and mmCIF files are supported for structure input.")
         sim_map = sb.gaussian_blur_real_space(prot=structure, resolution=args.res)
-        os.makedirs("map_tmp", exist_ok=True)
-        sim_map.write_to_MRC_file("map_tmp/simu_map.mrc")
-        assert os.path.exists("map_tmp/simu_map.mrc"), "Failed to create simulated map from structure."
+        os.makedirs("tmp_data", exist_ok=True)
+        sim_map.write_to_MRC_file("tmp_data/simu_map.mrc")
+        assert os.path.exists("tmp_data/simu_map.mrc"), "Failed to create simulated map from structure."
         # set args.b to the simu map
-        args.b = "map_tmp/simu_map.mrc"
-
+        if args.command == "ss":
+            if args.res is None:
+                raise Exception("Please specify resolution when using structure as input.")
+            from ssutils.pdb2ss import gen_npy
+            print("Generating secondary structure assignment for input structure...")
+            tgt_ss = gen_npy(args.b, args.res, verbose=True)
+        args.b = "tmp_data/simu_map.mrc"
 
     # GPU settings
     device = None
@@ -122,9 +131,10 @@ if __name__ == "__main__":
             exit(1)
         else:
             # set up torch cuda device
+            os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
             os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu_id)
             device = torch.device(f"cuda:{gpu_id}")
-            print(f"Using GPU {gpu_id} for CUDA acceleration.")
+            print(f"Using GPU {gpu_id} for CUDA acceleration. GPU Name: {torch.cuda.get_device_name(gpu_id)}")
     else:
         print("Using FFTW3 for CPU.")
         use_gpu = False
@@ -223,11 +233,13 @@ if __name__ == "__main__":
 
     elif args.command == "ss":
 
+        from ssutils.pdb2ss import gen_npy
+
         print("### Input Params Summary ###")
         print("Reference Map Path: ", args.a)
         print("Target Map Path: ", args.b)
-        print("Target Secondary Structure Assignment: ", args.npa)
-        print("Search Secondary Structure Assignment: ", args.npb)
+        # print("Target Secondary Structure Assignment: ", args.npa)
+        # print("Search Secondary Structure Assignment: ", args.npb)
         print("Threshold of Reference Map: ", args.t)
         print("Threshold of Target Map: ", args.T)
         print("Bandwidth of the Gaussian filter: ", args.g)
@@ -249,7 +261,11 @@ if __name__ == "__main__":
 
         # construct mrc objects
         ref_map = EMmap(args.a, ss_data=np.load(args.npa).astype(np.float32))
-        tgt_map = EMmap(args.b, ss_data=np.load(args.npb).astype(np.float32))
+        # generate numpy array for target map if input is a PDB file
+        if tgt_ss is not None:
+            tgt_map = EMmap(args.b, ss_data=tgt_ss.astype(np.float32))
+        else:
+            tgt_map = EMmap(args.b, ss_data=np.load(args.npb).astype(np.float32))
 
         # set voxel size
         ref_map.set_vox_size(thr=args.t, voxel_size=args.s)

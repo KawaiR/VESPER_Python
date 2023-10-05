@@ -4,6 +4,7 @@ from datetime import datetime
 from itertools import product
 
 import numpy as np
+import torch
 
 from tqdm import tqdm
 
@@ -701,7 +702,7 @@ class MapFitter:
 
         if v_ave is not None and v_std is not None and ss_ave is not None and ss_std is not None:
             mix_score, mix_vox_trans = self._find_best_trans_by_fft_list_ss(
-                fft_result_list, self.alpha, v_ave, v_std, ss_ave, ss_std
+                fft_result_list, self.alpha, v_ave, v_std, ss_ave, ss_std, self.gpu
             )
         else:
             mix_score, mix_vox_trans = None, None
@@ -977,17 +978,32 @@ class MapFitter:
             return best_score, trans
 
     @staticmethod
-    def _find_best_trans_by_fft_list_ss(fft_result_list, alpha, vec_score_mean, vec_score_std, ss_score_mean, ss_score_std):
-        sum_arr_v = np.sum(fft_result_list[:3], axis=0)
-        sum_arr_ss = np.sum(fft_result_list[3:-1], axis=0)  # do not include nucleotide score
+    def _find_best_trans_by_fft_list_ss(
+        fft_result_list, alpha, vec_score_mean, vec_score_std, ss_score_mean, ss_score_std, gpu=False
+    ):
+        if gpu:
+            sum_arr_v = torch.stack(fft_result_list[:3]).sum(dim=0)
+            sum_arr_ss = torch.stack(fft_result_list[3:-1]).sum(dim=0)  # do not include nucleotide score
 
-        # z-score normalization
-        sum_arr_v = (sum_arr_v - vec_score_mean) / vec_score_std
-        sum_arr_ss = (sum_arr_ss - ss_score_mean) / ss_score_std
+            # z-score normalization
+            sum_arr_v = (sum_arr_v - vec_score_mean) / vec_score_std
+            sum_arr_ss = (sum_arr_ss - ss_score_mean) / ss_score_std
 
-        sum_arr_mixed = (1 - alpha) * sum_arr_v + alpha * sum_arr_ss
-        best_score = sum_arr_mixed.max()
-        best_trans = np.unravel_index(sum_arr_mixed.argmax(), sum_arr_mixed.shape)
+            sum_arr_mixed = (1 - alpha) * sum_arr_v + alpha * sum_arr_ss
+            best_score = torch.amax(sum_arr_mixed).cpu().numpy()
+            best_trans = np.unravel_index(sum_arr_mixed.cpu().numpy().argmax(), sum_arr_mixed.shape)
+
+        else:
+            sum_arr_v = np.sum(fft_result_list[:3], axis=0)
+            sum_arr_ss = np.sum(fft_result_list[3:-1], axis=0)  # do not include nucleotide score
+
+            # z-score normalization
+            sum_arr_v = (sum_arr_v - vec_score_mean) / vec_score_std
+            sum_arr_ss = (sum_arr_ss - ss_score_mean) / ss_score_std
+
+            sum_arr_mixed = (1 - alpha) * sum_arr_v + alpha * sum_arr_ss
+            best_score = sum_arr_mixed.max()
+            best_trans = np.unravel_index(sum_arr_mixed.argmax(), sum_arr_mixed.shape)
 
         return best_score, best_trans
 
