@@ -269,7 +269,7 @@ def calc(stp, endp, pos, data, fsiv):
     return dtotal, pos2
 
 
-# @jit(nopython=True)
+@jit(nopython=True)
 def do_resample_and_vec(
     src_xwidth,
     src_orig,
