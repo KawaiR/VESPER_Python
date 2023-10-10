@@ -269,7 +269,7 @@ def calc(stp, endp, pos, data, fsiv):
     return dtotal, pos2
 
 
-@jit(nopython=True)
+# @jit(nopython=True)
 def do_resample_and_vec(
     src_xwidth,
     src_orig,
@@ -369,7 +369,7 @@ def do_resample_and_vec(
                     dest_ss_data[x][y][z][2], _ = calc(stp, endp, pos, ss_data[..., 2], fsiv)
                     dest_ss_data[x][y][z][3], _ = calc(stp, endp, pos, ss_data[..., 3], fsiv)
 
-                if dtotal == 0:
+                if np.isclose(dtotal, 0.0):  # check for infinitesimal density due to numerical error
                     continue
 
                 dest_data[x][y][z] = dtotal
