@@ -88,9 +88,6 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    assert os.path.exists(args.a), "Reference map not found, please check -a option"
-    assert os.path.exists(args.b), "Target map not found, please check -b option"
-
     tgt_ss = None
 
     if args.b.split(".")[-1] == 'pdb' or args.b.split(".")[-1] == 'cif':
@@ -112,11 +109,14 @@ if __name__ == "__main__":
         # set args.b to the simu map
         if args.command == "ss":
             if args.res is None:
-                raise Exception("Please specify resolution when using structure as input.")
+                raise ValueError("Please specify resolution when using structure as input.")
             from ssutils.pdb2ss import gen_npy
             print("Generating secondary structure assignment for input structure...")
             tgt_ss = gen_npy(args.b, args.res, verbose=True)
         args.b = "tmp_data/simu_map.mrc"
+
+    assert os.path.exists(args.a), "Reference map not found, please check -a option"
+    assert os.path.exists(args.b), "Target map not found, please check -b option"
 
     # GPU settings
     device = None

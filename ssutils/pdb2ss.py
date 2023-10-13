@@ -1,182 +1,149 @@
 import os
 import pathlib
 import shutil
-import subprocess
-import urllib.request
 
 import mrcfile
 import numpy as np
-import pandas as pd
 from TEMPy.maps.map_parser import MapParser
 from TEMPy.protein.structure_blurrer import StructureBlurrer
-from TEMPy.protein.structure_parser import PDBParser
+from TEMPy.protein.structure_parser import PDBParser, mmCIFParser
 
-
-def donwload_and_compile_stride():
-    """
-    The donwload_and_compile_stride function downloads and compiles the stride program if it is not already present.
-
-    :return: None
-    """
-    curr_dir = os.getcwd()
-    ssutils_path = pathlib.Path(__file__).parent.resolve()
-    if not os.path.exists(ssutils_path / "stride"):
-        print("No Stride binary found, downloading Stride...")
-        os.chdir(ssutils_path)
-        urllib.request.urlretrieve(
-            "http://webclu.bio.wzw.tum.de/stride/stride.tar.gz",
-            ssutils_path / "stride.tar.gz",
-        )
-        print("Extracting Stride...")
-        os.makedirs(ssutils_path / "stride_src", exist_ok=True)
-        os.system(f"tar -zxf stride.tar.gz -C {ssutils_path / 'stride_src'}")
-        os.system("rm stride.tar.gz")
-        os.chdir("stride_src")
-        print("Compiling Stride...")
-        os.system("make")
-        os.chdir(ssutils_path)
-        shutil.copyfile(ssutils_path / "stride_src" / "stride", ssutils_path / "stride")
-        os.chmod(ssutils_path / "stride", 0o755)
-        shutil.rmtree(ssutils_path / "stride_src")
-        if os.path.exists("./stride"):
-            print("Stride downloaded and compiled!")
-        else:
-            print("Stride download and compile failed!")
-    os.chdir(curr_dir)
+import biotite.structure.io as strucio
+import biotite.structure as struc
 
 
 def contains_number(s):
     return any(i.isdigit() for i in s)
 
 
-def run_stride(pdb_path, output_dir, verbose=False):
-    """
-    The run_stride function takes a PDB file and assigns secondary structure to each residue.
-    It does this by running the program Stride, which is included in the repository.
-    The output of run_stride is a text file containing one line for each residue in the PDB file, with information about that residue's secondary structure assignment.
+def split_pdb_by_ss(pdb_path, output_dir):
 
-    :param pdb_path: Specify the path to the pdb file
-    :param output_dir: Specify the directory where the output file will be saved
-    :param verbose: Print out the progress of the function
-    :return: The path to the output file
-    """
-    if verbose:
-        print("Assigning secondary structure using Stride...")
+    array = strucio.load_structure(pdb_path)
+    residues = struc.get_residues(array)[0]
+    sse = struc.annotate_sse(array, chain_id="A0")
 
-    os.makedirs(output_dir, exist_ok=True)
+    # get res ids for each ss class
+    a_res = residues[sse == "a"]
+    b_res = residues[sse == "b"]
+    c_res = residues[sse == "c"]
 
-    pdb_path = os.path.abspath(pdb_path)
-    filename = pathlib.Path(pdb_path).stem
-    stride_path = pathlib.Path(__file__).parent.resolve() / "stride"
-    # os.system('./stride "' + pdb_path + '" > ' + '"' + output_dir + filename + ".ss" + '"')
-    subprocess.run(
-        [str(stride_path), pdb_path],
-        stdout=open(output_dir + filename + ".ss", "w"),
-        stderr=subprocess.PIPE,
-    )
+    # create ss mask by residue id
+    a_mask = [(True if res_id in a_res else False) for res_id in array.res_id]
+    b_mask = [(True if res_id in b_res else False) for res_id in array.res_id]
+    c_mask = [(True if res_id in c_res else False) for res_id in array.res_id]
 
-    if verbose:
-        print("SS assignment file save to: " + output_dir + filename + ".ss")
-
-    return output_dir + filename + ".ss"
-
-
-def split_pdb_by_ss(pdb_path, ss_path, output_dir, verbose=False):
-    """
-    The split_pdb_by_ss function takes in a PDB file and a secondary structure prediction file,
-    and splits the PDB into three files based on the predicted secondary structure. The output is
-    three new PDB files with names ending in _ssA.pdb, _ssB.pdb, and _ssC.pdb.
-
-    :param pdb_path: Specify the path to the pdb file
-    :param ss_path: Specify the path to the secondary structure file
-    :param output_dir: Specify the directory where the pdb files will be saved
-    :param verbose: More verbose output
-    :return: None
-    """
-    if verbose:
-        print("Splitting PDB file by secondary structure...")
-        print("PDB file: " + pdb_path)
-        print("SS file: " + ss_path)
-        print("Output directory: " + output_dir)
+    # apply mask to array
+    arr_a = array[a_mask]
+    arr_b = array[b_mask]
+    arr_c = array[c_mask]
 
     os.makedirs(output_dir, exist_ok=True)
-
-    file_ss = open(ss_path, mode="r")
-    file_pdb = open(pdb_path, mode="r")
-
-    ss_lines = file_ss.readlines()
-    pdb_lines = file_pdb.readlines()
-
-    ss_lines_pred_a = []
-    ss_lines_pred_b = []
-    ss_lines_pred_c = []
-
-    for line in ss_lines:
-        if line.startswith("ASG"):
-            entries = line.split()
-            if entries[5] == "H" or entries[5] == "G" or entries[5] == "I":
-                ss_lines_pred_a.append(entries[3])
-            elif entries[5] == "B" or entries[5] == "E":
-                ss_lines_pred_b.append(entries[3])
-            else:
-                ss_lines_pred_c.append(entries[3])
-
-    pdb_lines_atoms = []
-    residual_nums = []
-    for line in pdb_lines:
-        if line.startswith("ATOM"):
-            pdb_lines_atoms.append(line)
-            if not contains_number(line.split()[4]):
-                residual_nums.append(line.split()[5])
-            else:
-                residual_nums.append("".join(filter(str.isdigit, line.split()[4])))
-
-    data_list = pd.Series(pdb_lines_atoms)
-    data_res = pd.Series(residual_nums, dtype=str)
-    df = pd.concat((data_list, data_res), axis=1)
-    df.columns = ["str", "res_num"]
-
-    # Create a new directory is not exists
-    pathlib.Path(output_dir).mkdir(parents=True, exist_ok=True)
-
-    a_strs = df[df["res_num"].isin(ss_lines_pred_a)]
-    b_strs = df[df["res_num"].isin(ss_lines_pred_b)]
-    c_strs = df[df["res_num"].isin(ss_lines_pred_c)]
-
     pdb_path = pathlib.Path(pdb_path)
 
-    with open(os.path.join(output_dir, f"{pdb_path.stem}_ssA.pdb"), "w") as fp:
-        for item in a_strs["str"].to_list():
-            fp.write("%s" % item)
+    from Bio.PDB import MMCIFParser, MMCIFIO, Select
 
-    with open(os.path.join(output_dir, f"{pdb_path.stem}_ssB.pdb"), "w") as fp:
-        for item in b_strs["str"].to_list():
-            fp.write("%s" % item)
+    class ResIDSelect(Select):
+        def __init__(self, res_ids):
+            self.res_ids = res_ids
 
-    with open(os.path.join(output_dir, f"{pdb_path.stem}_ssC.pdb"), "w") as fp:
-        for item in c_strs["str"].to_list():
-            fp.write("%s" % item)
+        def accept_residue(self, residue):
+            return residue.get_id()[1] in self.res_ids
 
-    if verbose:
-        print("PDB files saved to: " + output_dir)
+    parser = MMCIFParser(QUIET=True)
+    io = MMCIFIO()
+    bio_st = parser.get_structure("target_pdb", pdb_path)
+    io.set_structure(bio_st)
+    io.save(os.path.join(output_dir, f"{pdb_path.stem}_ssA.cif"), ResIDSelect(a_res))
+    io.save(os.path.join(output_dir, f"{pdb_path.stem}_ssB.cif"), ResIDSelect(b_res))
+    io.save(os.path.join(output_dir, f"{pdb_path.stem}_ssC.cif"), ResIDSelect(c_res))
+
+    # strucio.save_structure(os.path.join(output_dir, f"{pdb_path.stem}_ssA.cif"), arr_a)
+    # strucio.save_structure(os.path.join(output_dir, f"{pdb_path.stem}_ssB.cif"), arr_b)
+    # strucio.save_structure(os.path.join(output_dir, f"{pdb_path.stem}_ssC.cif"), arr_c)
+
+    import gemmi
+    from gemmi import cif
+
+    block_in = cif.read(str(pdb_path)).sole_block()
+    gemmi_st = gemmi.make_structure_from_block(block_in)
+
+    block_a = cif.read(os.path.join(output_dir, f"{pdb_path.stem}_ssA.cif")).sole_block()
+    block_b = cif.read(os.path.join(output_dir, f"{pdb_path.stem}_ssB.cif")).sole_block()
+    block_c = cif.read(os.path.join(output_dir, f"{pdb_path.stem}_ssC.cif")).sole_block()
+
+    gemmi_st_a = gemmi.make_structure_from_block(block_a)
+    gemmi_st_a.entities = gemmi_st.entities
+    gemmi_st_b = gemmi.make_structure_from_block(block_b)
+    gemmi_st_b.entities = gemmi_st.entities
+    gemmi_st_c = gemmi.make_structure_from_block(block_c)
+    gemmi_st_c.entities = gemmi_st.entities
+
+    gemmi_st_a.update_mmcif_block(block_a)
+    gemmi_st_b.update_mmcif_block(block_b)
+    gemmi_st_c.update_mmcif_block(block_c)
+
+    block_a.write_file(os.path.join(output_dir, f"{pdb_path.stem}_ssA.cif"))
+    block_b.write_file(os.path.join(output_dir, f"{pdb_path.stem}_ssB.cif"))
+    block_c.write_file(os.path.join(output_dir, f"{pdb_path.stem}_ssC.cif"))
 
 
-def gen_simu_map(pdb_path, res, output_path, densMap=False):
+def gen_simu_map(file_path, res, output_path, densMap=None):
     """
     The gen_simu_map function takes a PDB file and generates a simulated map from it.
 
-    :param pdb_path: Specify the path to the pdb file
+    :param file_path: Specify the path to the pdb file
     :param res: Set the resolution of the simulated map
     :param output_path: Specify the path to where the simulated map will be saved
     :param densMap: Specify a density map to use as a reference for output dimensions
     :return: A simulated map based on a pdb file
     """
-    sb = StructureBlurrer()
-    pdb_path = os.path.abspath(pdb_path)
-    output_path = os.path.abspath(output_path)
-    pdb = PDBParser.read_PDB_file("pdb1", pdb_path)
-    simu_map = sb.gaussian_blur_real_space(pdb, res, densMap=densMap)
-    simu_map.write_to_MRC_file(output_path)
+
+    # check number of atoms in pdb file, if none, return new map with dimensions of densMap
+    from Bio.PDB import MMCIF2Dict
+
+    cif_dict = MMCIF2Dict.MMCIF2Dict(file_path)
+
+    if "_atom_site.label_atom_id" in cif_dict:
+        atom_site_data = cif_dict["_atom_site.label_atom_id"]
+        atom_count = len(atom_site_data)
+    elif "_atom_site.auth_atom_id" in cif_dict:
+        atom_site_data = cif_dict["_atom_site.auth_atom_id"]
+        atom_count = len(atom_site_data)
+    else:
+        atom_count = 0
+
+    if atom_count == 0:
+        if densMap:
+            with mrcfile.open(densMap, permissive=True) as mrc:
+                # set all values to 0
+                with mrcfile.new(output_path, overwrite=True) as mrc_new:
+                    mrc_new.set_data(np.zeros(mrc.data.shape, dtype=np.float32))
+                    mrc_new.voxel_size = mrc.voxel_size
+                    mrc_new.update_header_from_data()
+                    mrc_new.header.nxstart = mrc.header.nxstart
+                    mrc_new.header.nystart = mrc.header.nystart
+                    mrc_new.header.nzstart = mrc.header.nzstart
+                    mrc_new.header.origin = mrc.header.origin
+                    mrc_new.header.mapc = mrc.header.mapc
+                    mrc_new.header.mapr = mrc.header.mapr
+                    mrc_new.header.maps = mrc.header.maps
+                    mrc_new.update_header_stats()
+                    mrc_new.flush() # write to disk
+        else:
+            raise Exception("No atoms in PDB file and no density map specified.")
+    else:
+        densMap = MapParser.readMRC(densMap) if densMap else None
+        sb = StructureBlurrer()
+        pdb_path = os.path.abspath(file_path)
+        # output_path = os.path.abspath(output_path)
+        if file_path.split(".")[-1] == "cif":
+            st = mmCIFParser.read_mmCIF_file(pdb_path, hetatm=True)
+        elif file_path.split(".")[-1] == "pdb":
+            st = PDBParser.read_PDB_file("pdb1", pdb_path)
+        else:
+            raise ValueError("Make sure the input file is a PDB or mmCIF file.")
+        simu_map = sb.gaussian_blur_real_space(st, res, densMap=densMap)
+        simu_map.write_to_MRC_file(output_path)
 
 
 def gen_npy(pdb_path, sample_res, npy_path=None, verbose=False):
@@ -190,35 +157,26 @@ def gen_npy(pdb_path, sample_res, npy_path=None, verbose=False):
         shutil.rmtree(tmp_dir)
     os.makedirs(tmp_dir, exist_ok=True)
 
-    ss_dir = os.path.join(tmp_dir, "ss")
     pdb_dir = os.path.join(tmp_dir, "pdb")
     simu_mrc_dir = os.path.join(tmp_dir, "simu_mrc")
 
-    os.makedirs(ss_dir, exist_ok=True)
     os.makedirs(pdb_dir, exist_ok=True)
     os.makedirs(simu_mrc_dir, exist_ok=True)
 
-    out_ss = run_stride(pdb_path, ss_dir, verbose)
-    split_pdb_by_ss(pdb_path, out_ss, pdb_dir, verbose)
+    split_pdb_by_ss(pdb_path, pdb_dir)
 
     pdb_simu_map_path = os.path.join(tmp_dir, f"{pdb_stem}_simu_map.mrc")
 
-    gen_simu_map(pdb_path, sample_res, pdb_simu_map_path)
-
-    pdb_simu_map = MapParser.readMRC(pdb_simu_map_path)
+    gen_simu_map(pdb_path, sample_res, pdb_simu_map_path, densMap=None)
 
     for file in os.listdir(pdb_dir):
         filename = str(pathlib.Path(file).stem)
-        if (
-            file.endswith("ssA.pdb")
-            or file.endswith("ssB.pdb")
-            or file.endswith("ssC.pdb")
-        ):
+        if "ssA" in file or "ssB" in file or "ssC" in file:
             gen_simu_map(
                 os.path.join(pdb_dir, file),
                 sample_res,
                 os.path.join(simu_mrc_dir, filename + ".mrc"),
-                densMap=pdb_simu_map,
+                densMap=pdb_simu_map_path,
             )
 
     with mrcfile.open(pdb_simu_map_path) as mrc:
