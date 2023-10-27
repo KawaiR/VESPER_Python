@@ -18,9 +18,11 @@ def contains_number(s):
 
 def split_pdb_by_ss(pdb_path, output_dir):
 
+    is_cif = pdb_path.split(".")[-1] == "cif"
+
     array = strucio.load_structure(pdb_path)
     residues = struc.get_residues(array)[0]
-    sse = struc.annotate_sse(array, chain_id="A0")
+    sse = struc.annotate_sse(array)
 
     # get res ids for each ss class
     a_res = residues[sse == "a"]
@@ -42,49 +44,49 @@ def split_pdb_by_ss(pdb_path, output_dir):
 
     from Bio.PDB import MMCIFParser, MMCIFIO, Select
 
-    class ResIDSelect(Select):
-        def __init__(self, res_ids):
-            self.res_ids = res_ids
+    # class ResIDSelect(Select):
+    #     def __init__(self, res_ids):
+    #         self.res_ids = res_ids
+    #
+    #     def accept_residue(self, residue):
+    #         return residue.get_id()[1] in self.res_ids
+    #
+    # parser = MMCIFParser(QUIET=True) if is_cif else PDBParser()
+    # io = MMCIFIO()
+    # bio_st = parser.get_structure("target_pdb", pdb_path)
+    # io.set_structure(bio_st)
+    # io.save(os.path.join(output_dir, f"{pdb_path.stem}_ssA.cif"), ResIDSelect(a_res))
+    # io.save(os.path.join(output_dir, f"{pdb_path.stem}_ssB.cif"), ResIDSelect(b_res))
+    # io.save(os.path.join(output_dir, f"{pdb_path.stem}_ssC.cif"), ResIDSelect(c_res))
 
-        def accept_residue(self, residue):
-            return residue.get_id()[1] in self.res_ids
+    strucio.save_structure(os.path.join(output_dir, f"{pdb_path.stem}_ssA.pdb"), arr_a)
+    strucio.save_structure(os.path.join(output_dir, f"{pdb_path.stem}_ssB.pdb"), arr_b)
+    strucio.save_structure(os.path.join(output_dir, f"{pdb_path.stem}_ssC.pdb"), arr_c)
 
-    parser = MMCIFParser(QUIET=True)
-    io = MMCIFIO()
-    bio_st = parser.get_structure("target_pdb", pdb_path)
-    io.set_structure(bio_st)
-    io.save(os.path.join(output_dir, f"{pdb_path.stem}_ssA.cif"), ResIDSelect(a_res))
-    io.save(os.path.join(output_dir, f"{pdb_path.stem}_ssB.cif"), ResIDSelect(b_res))
-    io.save(os.path.join(output_dir, f"{pdb_path.stem}_ssC.cif"), ResIDSelect(c_res))
-
-    # strucio.save_structure(os.path.join(output_dir, f"{pdb_path.stem}_ssA.cif"), arr_a)
-    # strucio.save_structure(os.path.join(output_dir, f"{pdb_path.stem}_ssB.cif"), arr_b)
-    # strucio.save_structure(os.path.join(output_dir, f"{pdb_path.stem}_ssC.cif"), arr_c)
-
-    import gemmi
-    from gemmi import cif
-
-    block_in = cif.read(str(pdb_path)).sole_block()
-    gemmi_st = gemmi.make_structure_from_block(block_in)
-
-    block_a = cif.read(os.path.join(output_dir, f"{pdb_path.stem}_ssA.cif")).sole_block()
-    block_b = cif.read(os.path.join(output_dir, f"{pdb_path.stem}_ssB.cif")).sole_block()
-    block_c = cif.read(os.path.join(output_dir, f"{pdb_path.stem}_ssC.cif")).sole_block()
-
-    gemmi_st_a = gemmi.make_structure_from_block(block_a)
-    gemmi_st_a.entities = gemmi_st.entities
-    gemmi_st_b = gemmi.make_structure_from_block(block_b)
-    gemmi_st_b.entities = gemmi_st.entities
-    gemmi_st_c = gemmi.make_structure_from_block(block_c)
-    gemmi_st_c.entities = gemmi_st.entities
-
-    gemmi_st_a.update_mmcif_block(block_a)
-    gemmi_st_b.update_mmcif_block(block_b)
-    gemmi_st_c.update_mmcif_block(block_c)
-
-    block_a.write_file(os.path.join(output_dir, f"{pdb_path.stem}_ssA.cif"))
-    block_b.write_file(os.path.join(output_dir, f"{pdb_path.stem}_ssB.cif"))
-    block_c.write_file(os.path.join(output_dir, f"{pdb_path.stem}_ssC.cif"))
+    # import gemmi
+    # from gemmi import cif
+    #
+    # block_in = cif.read(str(pdb_path)).sole_block()
+    # gemmi_st = gemmi.make_structure_from_block(block_in)
+    #
+    # block_a = cif.read(os.path.join(output_dir, f"{pdb_path.stem}_ssA.cif")).sole_block()
+    # block_b = cif.read(os.path.join(output_dir, f"{pdb_path.stem}_ssB.cif")).sole_block()
+    # block_c = cif.read(os.path.join(output_dir, f"{pdb_path.stem}_ssC.cif")).sole_block()
+    #
+    # gemmi_st_a = gemmi.make_structure_from_block(block_a)
+    # gemmi_st_a.entities = gemmi_st.entities
+    # gemmi_st_b = gemmi.make_structure_from_block(block_b)
+    # gemmi_st_b.entities = gemmi_st.entities
+    # gemmi_st_c = gemmi.make_structure_from_block(block_c)
+    # gemmi_st_c.entities = gemmi_st.entities
+    #
+    # gemmi_st_a.update_mmcif_block(block_a)
+    # gemmi_st_b.update_mmcif_block(block_b)
+    # gemmi_st_c.update_mmcif_block(block_c)
+    #
+    # block_a.write_file(os.path.join(output_dir, f"{pdb_path.stem}_ssA.cif"))
+    # block_b.write_file(os.path.join(output_dir, f"{pdb_path.stem}_ssB.cif"))
+    # block_c.write_file(os.path.join(output_dir, f"{pdb_path.stem}_ssC.cif"))
 
 
 def gen_simu_map(file_path, res, output_path, densMap=None):
@@ -98,19 +100,29 @@ def gen_simu_map(file_path, res, output_path, densMap=None):
     :return: A simulated map based on a pdb file
     """
 
-    # check number of atoms in pdb file, if none, return new map with dimensions of densMap
-    from Bio.PDB import MMCIF2Dict
+    is_cif = file_path.split(".")[-1] == "cif"
 
-    cif_dict = MMCIF2Dict.MMCIF2Dict(file_path)
+    # check number of atoms in pdb file, if none, return new map with dimensions of densMap\
 
-    if "_atom_site.label_atom_id" in cif_dict:
-        atom_site_data = cif_dict["_atom_site.label_atom_id"]
-        atom_count = len(atom_site_data)
-    elif "_atom_site.auth_atom_id" in cif_dict:
-        atom_site_data = cif_dict["_atom_site.auth_atom_id"]
-        atom_count = len(atom_site_data)
+    if is_cif:
+        from Bio.PDB import MMCIF2Dict
+
+        cif_dict = MMCIF2Dict.MMCIF2Dict(file_path)
+
+        if "_atom_site.label_atom_id" in cif_dict:
+            atom_site_data = cif_dict["_atom_site.label_atom_id"]
+            atom_count = len(atom_site_data)
+        elif "_atom_site.auth_atom_id" in cif_dict:
+            atom_site_data = cif_dict["_atom_site.auth_atom_id"]
+            atom_count = len(atom_site_data)
+        else:
+            atom_count = 0
     else:
-        atom_count = 0
+        with open(file_path) as f:
+            atom_count = 0
+            for line in f:
+                if line.startswith("ATOM"):
+                    atom_count += 1
 
     if atom_count == 0:
         if densMap:
