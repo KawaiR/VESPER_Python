@@ -125,6 +125,7 @@ def gen_simu_map(file_path, res, output_path, densMap=None):
                     atom_count += 1
 
     if atom_count == 0:
+        # handle no atoms in ss category
         if densMap:
             with mrcfile.open(densMap, permissive=True) as mrc:
                 # set all values to 0
@@ -149,11 +150,11 @@ def gen_simu_map(file_path, res, output_path, densMap=None):
         pdb_path = os.path.abspath(file_path)
         # output_path = os.path.abspath(output_path)
         if file_path.split(".")[-1] == "cif":
-            st = mmCIFParser.read_mmCIF_file(pdb_path, hetatm=True)
+            st = mmCIFParser.read_mmCIF_file(pdb_path)
         elif file_path.split(".")[-1] == "pdb":
             st = PDBParser.read_PDB_file("pdb1", pdb_path)
         else:
-            raise ValueError("Make sure the input file is a PDB or mmCIF file.")
+            raise Exception("Make sure the input file is a PDB or mmCIF file.")
         simu_map = sb.gaussian_blur_real_space(st, res, densMap=densMap)
         simu_map.write_to_MRC_file(output_path)
 

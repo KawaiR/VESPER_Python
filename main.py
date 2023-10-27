@@ -97,7 +97,7 @@ if __name__ == "__main__":
         from TEMPy.protein.structure_parser import PDBParser, mmCIFParser
         sb = StructureBlurrer()
         if args.b.split(".")[-1] == "pdb":
-            structure = PDBParser.read_PDB_file('PDB1', args.b)
+            structure = PDBParser.read_PDB_file('PDB1', args.b, hetatm=False, water=False)
         elif args.b.split(".")[-1] == "cif":
             structure = mmCIFParser.read_mmCIF_file(args.b)
         else:
