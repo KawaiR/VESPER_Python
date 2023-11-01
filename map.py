@@ -3,6 +3,8 @@ import copy
 import mrcfile
 import numpy as np
 from numba import jit
+from tqdm import tqdm
+
 
 # from julia.api import Julia
 # jl = Julia(compiled_modules=False)
@@ -111,9 +113,8 @@ class EMmap:
         tmp_size = 2 * dmax * self.xwidth / voxel_size
 
         # get the best size suitable for fft operation
-        from pyfftw import pyfftw
-
-        new_dim = pyfftw.next_fast_len(int(tmp_size))
+        from pyfftw.pyfftw import next_fast_len
+        new_dim = next_fast_len(int(tmp_size))
 
         # set new origins
         self.new_orig = self.new_cent - 0.5 * new_dim * voxel_size
@@ -136,7 +137,7 @@ class EMmap:
         """
         src_dims = np.array((self.xdim, self.ydim, self.zdim))
 
-        res_data, res_vec, res_ss_data = do_resample_and_vec(
+        res_data, res_vec, res_ss_data = new_do_resample_and_vec(
             self.xwidth,
             self.orig,
             src_dims,
@@ -219,32 +220,6 @@ def unify_dims(map_list, voxel_size):
 
 
 @jit(nopython=True)
-def calc_prob(stp, endp, pos, density_data, prob_data, fsiv):
-    """Density weighted mean shift algorithm using Gaussian filter to sample data in original MRC density map"""
-    dtotal = 0.0
-    pos2 = np.zeros((3,))
-
-    for xp in range(stp[0], endp[0]):
-        rx = float(xp) - pos[0]
-        rx = rx**2
-        for yp in range(stp[1], endp[1]):
-            ry = float(yp) - pos[1]
-            ry = ry**2
-            for zp in range(stp[2], endp[2]):
-                rz = float(zp) - pos[2]
-                rz = rz**2
-                d2 = rx + ry + rz
-                # v = density_data[xp][yp][zp] * prob_data[xp][yp][zp] *  np.exp(-1.5 * d2 * fsiv)
-                v = prob_data[xp][yp][zp] * np.exp(-1.5 * d2 * fsiv)
-                dtotal += v
-                pos2[0] += v * xp
-                pos2[1] += v * yp
-                pos2[2] += v * zp
-
-    return dtotal, pos2
-
-
-@jit(nopython=True)
 def calc(stp, endp, pos, data, fsiv):
     """Mean shift algorithm using Gaussian filter to sample data in original MRC density map"""
     dtotal = 0.0
@@ -252,15 +227,15 @@ def calc(stp, endp, pos, data, fsiv):
 
     for xp in range(stp[0], endp[0]):
         rx = float(xp) - pos[0]
-        rx = rx**2
+        rx = rx ** 2
         for yp in range(stp[1], endp[1]):
             ry = float(yp) - pos[1]
-            ry = ry**2
+            ry = ry ** 2
             for zp in range(stp[2], endp[2]):
                 rz = float(zp) - pos[2]
-                rz = rz**2
+                rz = rz ** 2
                 d2 = rx + ry + rz
-                v = data[xp][yp][zp] * np.exp(-1.5 * d2 * fsiv)
+                v = data[xp, yp, zp] * np.exp(-1.5 * d2 * fsiv)
                 dtotal += v
                 pos2[0] += v * xp
                 pos2[1] += v * yp
@@ -271,16 +246,16 @@ def calc(stp, endp, pos, data, fsiv):
 
 @jit(nopython=True)
 def do_resample_and_vec(
-    src_xwidth,
-    src_orig,
-    src_dims,
-    src_data,
-    dest_xwidth,
-    dest_orig,
-    new_dim,
-    dreso,
-    density_map,
-    ss_data,
+        src_xwidth,
+        src_orig,
+        src_dims,
+        src_data,
+        dest_xwidth,
+        dest_orig,
+        new_dim,
+        dreso,
+        density_map,
+        ss_data,
 ):
     """
     The do_resample_and_vec function takes in the following parameters:
@@ -304,11 +279,10 @@ def do_resample_and_vec(
 
     gstep = src_xwidth
     fs = (dreso / gstep) * 0.5
-    fs = fs**2
-    fsiv = 1.0 / fs
+    fsiv = 1 / (fs * fs)
     fmaxd = (dreso / gstep) * 2.0
-    print("#maxd=", fmaxd)
-    print("#fsiv=", fsiv)
+    # print("#maxd=", fmaxd)
+    # print("#fsiv=", fsiv)
 
     dest_vec = np.zeros((new_dim, new_dim, new_dim, 3), dtype="float32")
     dest_data = np.zeros((new_dim, new_dim, new_dim), dtype="float32")
@@ -324,12 +298,12 @@ def do_resample_and_vec(
                 # check density
 
                 if (
-                    pos[0] < 0
-                    or pos[1] < 0
-                    or pos[2] < 0
-                    or pos[0] >= src_dims[0]
-                    or pos[1] >= src_dims[1]
-                    or pos[2] >= src_dims[2]
+                        pos[0] < 0
+                        or pos[1] < 0
+                        or pos[2] < 0
+                        or pos[0] >= src_dims[0]
+                        or pos[1] >= src_dims[1]
+                        or pos[2] >= src_dims[2]
                 ):
                     continue
 
@@ -372,7 +346,7 @@ def do_resample_and_vec(
                 if np.isclose(dtotal, 0.0):  # check for infinitesimal density due to numerical error
                     continue
 
-                dest_data[x][y][z] = dtotal
+                dest_data[x, y, z] = dtotal
 
                 rd = 1.0 / dtotal
 
@@ -387,6 +361,162 @@ def do_resample_and_vec(
 
                 rdvec = 1.0 / dvec
 
-                dest_vec[x][y][z] = tmpcd * rdvec
+                dest_vec[x, y, z] = tmpcd * rdvec
+
+    return dest_data, dest_vec, dest_ss_data
+
+
+@jit(nogil=True, nopython=True)
+def construct_kernel(pt, fmaxd, fsiv, xdim, ydim, zdim):
+    """
+    Constructs a kernel centered at a given point.
+
+    Args:
+        pt (numpy.ndarray): The center point of the kernel.
+        fmaxd (float): The maximum distance from the center point.
+        fsiv (float): The invese of the square of the bandwidth.
+        xdim (float): The x boundary of the kernel.
+        ydim (float): The y boundary of the kernel.
+        zdim (float): The z boundary of the kernel.
+        kernel_only (bool, optional): If True, only the kernel is returned. Defaults to False.
+
+    Returns:
+        tuple: A tuple containing the x, y, and z coordinates of the kernel, the start and end points of the kernel, and the kernel itself.
+    """
+    stp = np.maximum(0, pt - fmaxd).astype(np.int64)
+    endp = np.minimum(pt + fmaxd + 1, np.array([xdim, ydim, zdim])).astype(np.int64)
+
+    xx = np.arange(stp[0], endp[0], 1)
+    yy = np.arange(stp[1], endp[1], 1)
+    zz = np.arange(stp[2], endp[2], 1)
+
+    xx = np.expand_dims(xx, axis=1)
+    xx = np.expand_dims(xx, axis=1)
+    yy = np.expand_dims(yy, axis=1)
+    yy = np.expand_dims(yy, axis=0)
+    zz = np.expand_dims(zz, axis=0)
+    zz = np.expand_dims(zz, axis=0)
+
+    kernel = np.exp(-1.5 * ((xx - pt[0]) ** 2 + (yy - pt[1]) ** 2 + (zz - pt[2]) ** 2) * fsiv)
+    return xx, yy, zz, stp, endp, kernel
+
+
+@jit(nogil=True, nopython=True)
+def calc_dens_vec(pt, coord, fmaxd, fsiv, xdim, ydim, zdim, dens, calc_vec=True):
+    xx, yy, zz, stp, endp, kernel = construct_kernel(pt, fmaxd, fsiv, xdim, ydim, zdim)
+    filtered_d = kernel * dens[stp[0]: endp[0], stp[1]: endp[1], stp[2]: endp[2]]
+    dtotal = np.sum(filtered_d)
+    if calc_vec:
+        v = np.array([np.sum(filtered_d * xx), np.sum(filtered_d * yy), np.sum(filtered_d * zz)])
+        v = pt - (v / dtotal)
+        v = v / np.sqrt(np.sum(v ** 2))  # normalize
+        return dtotal, v, coord
+    else:
+        return dtotal, None, coord
+
+
+@jit(nogil=True, nopython=True)
+def calc_dens_vec_with_ss(pt, coord, fmaxd, fsiv, xdim, ydim, zdim, dens, ss_data):
+    xx, yy, zz, stp, endp, kernel = construct_kernel(pt, fmaxd, fsiv, xdim, ydim, zdim)
+    filtered_d = kernel * dens[stp[0]: endp[0], stp[1]: endp[1], stp[2]: endp[2]]
+    filtered_ss_a = kernel * ss_data[stp[0]: endp[0], stp[1]: endp[1], stp[2]: endp[2], 0]
+    filtered_ss_b = kernel * ss_data[stp[0]: endp[0], stp[1]: endp[1], stp[2]: endp[2], 1]
+    filtered_ss_c = kernel * ss_data[stp[0]: endp[0], stp[1]: endp[1], stp[2]: endp[2], 2]
+    dtotal = np.sum(filtered_d)
+    v = np.array([np.sum(filtered_d * xx), np.sum(filtered_d * yy), np.sum(filtered_d * zz)])
+    v = pt - (v / dtotal)
+    v = v / np.sqrt(np.sum(v ** 2))  # normalize
+    return dtotal, v, filtered_ss_a, filtered_ss_b, filtered_ss_c, coord
+
+
+# @jit(nopython=True)
+def new_do_resample_and_vec(
+        src_xwidth,
+        src_orig,
+        src_dims,
+        src_data,
+        dest_xwidth,
+        dest_orig,
+        new_dim,
+        dreso,
+        density_map,
+        ss_data,
+):
+    gstep = src_xwidth
+    fs = (dreso / gstep) * 0.5
+    fsiv = 1 / (fs * fs)
+    fmaxd = (dreso / gstep) * 2.0
+
+    dest_vec = np.zeros((new_dim, new_dim, new_dim, 3), dtype="float32")
+    dest_data = np.zeros((new_dim, new_dim, new_dim), dtype="float32")
+    if ss_data is not None:
+        # avoid unnecessary memory allocation
+        dest_ss_data = np.zeros((new_dim, new_dim, new_dim, 4), dtype="float32")
+    else:
+        dest_ss_data = None
+
+    # make meshgrid
+    new_coords = np.asarray(np.meshgrid(np.arange(new_dim), np.arange(new_dim), np.arange(new_dim))).T.reshape(-1, 3)
+
+    pos = (new_coords * dest_xwidth + dest_orig - src_orig) / src_xwidth
+
+    # check density
+    mask = ((pos[:, 0] >= 0) & (pos[:, 1] >= 0) & (pos[:, 2] >= 0) & (pos[:, 0] < src_dims[0]) & (
+            pos[:, 1] < src_dims[1]) & (pos[:, 2] < src_dims[2]))
+
+    new_coords = new_coords[mask]
+    pos = pos[mask]
+
+    non_zero_mask = (src_data[pos[:, 0].astype(np.int32), pos[:, 1].astype(np.int32), pos[:, 2].astype(np.int32)] > 0)
+    new_coords = new_coords[non_zero_mask].astype(np.int32)
+    pos = pos[non_zero_mask]
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        with tqdm(total=len(pos)) as pbar:
+            futures = []
+            for coord, pt in zip(new_coords, pos):
+                if ss_data is not None:
+                    futures.append(
+                        executor.submit(calc_dens_vec_with_ss, pt, coord, fmaxd, fsiv, src_dims[0], src_dims[1],
+                                        src_dims[2],
+                                        src_data, ss_data))
+                else:
+                    futures.append(
+                        executor.submit(calc_dens_vec, pt, coord, fmaxd, fsiv, src_dims[0], src_dims[1], src_dims[2],
+                                        src_data, True))
+
+            for future in as_completed(futures):
+                if ss_data is not None:
+                    dtotal, v, ss_a, ss_b, ss_c, cd = future.result()
+                    dest_ss_data[cd[0], cd[1], cd[2], 0] = 0.0 if (np.isnan(ss_a) or np.isclose(ss_a, 0.0)) else ss_a
+                    dest_ss_data[cd[0], cd[1], cd[2], 1] = 0.0 if (np.isnan(ss_b) or np.isclose(ss_b, 0.0)) else ss_b
+                    dest_ss_data[cd[0], cd[1], cd[2], 2] = 0.0 if (np.isnan(ss_c) or np.isclose(ss_c, 0.0)) else ss_c
+                else:
+                    dtotal, v, cd = future.result()
+                if np.isnan(dtotal) or np.isclose(dtotal, 0.0):
+                    continue
+                dest_data[coord[0], coord[1], coord[2]] = dtotal
+                dest_vec[coord[0], coord[1], coord[2]] = v
+
+                pbar.update(1)
+
+    # single thread
+
+    # for coord, pt in zip(new_coords, pos):
+    #     if ss_data is not None:
+    #         dtotal, v, ss_a, ss_b, ss_c = calc_dens_vec_with_ss(pt, fmaxd, fsiv, src_dims[0], src_dims[1], src_dims[2],
+    #                                                             src_data, ss_data)
+    #         dest_ss_data[coord[0], coord[1], coord[2], 0] = 0.0 if (np.isnan(ss_a) or np.isclose(ss_a, 0.0)) else ss_a
+    #         dest_ss_data[coord[0], coord[1], coord[2], 1] = 0.0 if (np.isnan(ss_b) or np.isclose(ss_b, 0.0)) else ss_b
+    #         dest_ss_data[coord[0], coord[1], coord[2], 2] = 0.0 if (np.isnan(ss_c) or np.isclose(ss_c, 0.0)) else ss_c
+    #     else:
+    #         dtotal, v = calc_dens_vec(pt, fmaxd, fsiv, src_dims[0], src_dims[1], src_dims[2], src_data)
+    #
+    #     if np.isclose(dtotal, 0.0) or np.isnan(dtotal):
+    #         continue
+    #     dest_data[coord[0], coord[1], coord[2]] = dtotal
+    #     dest_vec[coord[0], coord[1], coord[2]] = v
 
     return dest_data, dest_vec, dest_ss_data

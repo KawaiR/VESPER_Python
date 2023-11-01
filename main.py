@@ -1,5 +1,6 @@
 import argparse
 import os
+import time
 from enum import Enum
 
 from fitter import MapFitter
@@ -189,6 +190,8 @@ if __name__ == "__main__":
         if args.ca:
             assert os.path.exists(args.ca), "CA file not found, please check -ca option"
 
+        init_start = time.time()
+
         # construct mrc objects
         ref_map = EMmap(args.a)
         tgt_map = EMmap(args.b)
@@ -200,16 +203,24 @@ if __name__ == "__main__":
         # unify dimensions
         unify_dims([ref_map, tgt_map], voxel_size=args.s)
 
+        init_end = time.time()
+        print("Initialization time: ", init_end - init_start, "s")
+
         # resample the maps using mean-shift with Gaussian kernel and calculate the vector representation
-        print("\n###Processing Reference Map Resampling###")
+        print()
+        print("###Processing Reference Map Resampling###")
         ref_map.resample_and_vec(dreso=args.g)
-        print("\n###Processing Target Map Resampling###")
+        print("###Processing Target Map Resampling###")
         tgt_map.resample_and_vec(dreso=args.g)
         print()
+
+        resample_end = time.time()
+        print("Resampling time: ", resample_end - init_end, "s")
 
         # set mrc output path
         trans_mrc_path = args.b if args.mrcout else None
 
+        print()
         fitter = MapFitter(
             ref_map,
             tgt_map,
@@ -229,7 +240,12 @@ if __name__ == "__main__":
             confine_angles=args.al,
             save_vec=args.S,
         )
+
+        fit_init_end = time.time()
+        print("Fit initialization time: ", fit_init_end - resample_end, "s")
         fitter.fit()
+        fit_end = time.time()
+        print("Fit time: ", fit_end - fit_init_end, "s")
 
     elif args.command == "ss":
 
